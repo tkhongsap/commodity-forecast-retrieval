@@ -6,7 +6,9 @@ import {
   CRUDE_OIL_CONFIG,
   SourceInfo,
   ParsedPriceData,
-  ValidationResult
+  ValidationResult,
+  ForecastData,
+  FORECAST_HORIZONS
 } from './types/commodity';
 
 // Load environment variables
@@ -467,6 +469,358 @@ function createCommodityDataStructure(
   };
 }
 
+// Multi-Horizon Forecast Generation Functions
+
+// Generate forecast query for specific horizon
+function generateForecastQuery(horizon: string, currentPrice: number): string {
+  const horizonConfig = FORECAST_HORIZONS.find(h => h.key === horizon);
+  
+  if (!horizonConfig) {
+    throw new Error(`Unknown forecast horizon: ${horizon}`);
+  }
+  
+  const currentDate = new Date();
+  const futureDate = new Date(currentDate.getTime() + (horizonConfig.months * 30 * 24 * 60 * 60 * 1000));
+  
+  return `Based on current crude oil WTI (CL=F) price of $${currentPrice} per barrel, what is the forecast for crude oil prices in ${horizonConfig.months} months (around ${futureDate.toLocaleDateString()})? 
+
+Please provide:
+1. Expected price range in USD per barrel
+2. Key factors that will influence the price over this ${horizonConfig.months}-month period
+3. Confidence level of the forecast
+4. Market sentiment and trends
+5. Major events, seasonal factors, or developments that could impact prices
+6. Comparison to current price (percentage change expected)
+
+Please cite reliable sources such as EIA, IEA, major financial institutions, energy analysts, or commodities research firms.`;
+}
+
+// Fetch forecast data for a specific horizon
+async function fetchForecastData(horizon: string, currentPrice: number): Promise<WebSearchResult> {
+  try {
+    console.log(`\n=== Fetching ${horizon} Forecast ===`);
+    
+    const query = generateForecastQuery(horizon, currentPrice);
+    console.log(`Generating forecast for ${horizon}...`);
+    
+    const result = await performWebSearch(query, {
+      maxRetries: 3,
+      timeout: 30000,
+      model: "gpt-4o-search-preview"
+    });
+    
+    const searchResult: WebSearchResult = {
+      content: result,
+      timestamp: new Date().toISOString(),
+      success: true,
+      sources: []
+    };
+    
+    console.log(`✅ ${horizon} forecast data fetched successfully`);
+    console.log(`Response length: ${result.length} characters`);
+    
+    return searchResult;
+    
+  } catch (error) {
+    console.error(`❌ Failed to fetch ${horizon} forecast:`, error instanceof Error ? error.message : error);
+    
+    return {
+      content: '',
+      timestamp: new Date().toISOString(),
+      success: false,
+      sources: []
+    };
+  }
+}
+
+// Percentage change calculation logic
+function calculatePercentageChange(currentPrice: number, forecastPrice: number): number {
+  if (currentPrice <= 0) {
+    throw new Error('Current price must be greater than zero');
+  }
+  
+  const change = ((forecastPrice - currentPrice) / currentPrice) * 100;
+  return Math.round(change * 100) / 100; // Round to 2 decimal places
+}
+
+// Parse forecast price from search result content
+function parseForecastPrice(content: string, horizon: string): number | null {
+  const lowerContent = content.toLowerCase();
+  
+  // Multiple patterns to extract forecast prices
+  const pricePatterns = [
+    // Range patterns: "$70-80", "$70 to $80", "$70-$80"
+    /\$(\d+\.?\d*)\s*(?:to|-|–)\s*\$?(\d+\.?\d*)/gi,
+    // Single forecast: "forecast $75", "expected $75", "target $75"
+    /(?:forecast|expected|target|predict)[ed]?\s*(?:price\s*)?:?\s*\$(\d+\.?\d*)/gi,
+    // Price with context: "oil price $75", "crude at $75"
+    /(?:oil|crude|price|wti)\s+(?:price\s+)?(?:at\s+)?\$(\d+\.?\d*)/gi,
+    // Month-specific patterns: "3 months: $75"
+    new RegExp(`${horizon.split('-')[0]}\\s*months?[\\s:]*\\$?(\\d+\\.?\\d*)`, 'gi')
+  ];
+  
+  let extractedPrice: number | null = null;
+  
+  for (const pattern of pricePatterns) {
+    const matches = [...lowerContent.matchAll(pattern)];
+    
+    if (matches.length > 0 && matches[0]) {
+      let price: number;
+      
+      if (matches[0][2]) {
+        // Range pattern - take the average
+        const lowPrice = parseFloat(matches[0][1] || '0');
+        const highPrice = parseFloat(matches[0][2] || '0');
+        price = (lowPrice + highPrice) / 2;
+      } else if (matches[0][1]) {
+        // Single price pattern
+        price = parseFloat(matches[0][1]);
+      } else {
+        continue;
+      }
+      
+      // Validate the price is reasonable for oil
+      if (!isNaN(price) && price > 0 && price < 1000) {
+        extractedPrice = price;
+        break;
+      }
+    }
+  }
+  
+  return extractedPrice;
+}
+
+// Parse confidence level from forecast content
+function parseConfidenceLevel(content: string): number | null {
+  const lowerContent = content.toLowerCase();
+  
+  const confidencePatterns = [
+    // "confidence: 70%", "confidence level: 70%"
+    /confidence(?:\s+level)?\s*:?\s*(\d+)%/gi,
+    // "70% confidence", "70% certain"
+    /(\d+)%\s*(?:confidence|certain|sure|likely)/gi,
+    // "high confidence", "medium confidence", "low confidence"
+    /(high|medium|low)\s*confidence/gi
+  ];
+  
+  for (const pattern of confidencePatterns) {
+    const match = lowerContent.match(pattern);
+    if (match) {
+      if (match[1] && !isNaN(parseInt(match[1]))) {
+        // Numeric confidence
+        const confidence = parseInt(match[1]);
+        if (confidence >= 0 && confidence <= 100) {
+          return confidence;
+        }
+      } else if (match[1]) {
+        // Text-based confidence - convert to numeric
+        switch (match[1].toLowerCase()) {
+          case 'high': return 80;
+          case 'medium': return 60;
+          case 'low': return 40;
+        }
+      }
+    }
+  }
+  
+  return null;
+}
+
+// Parse key factors from forecast content
+function parseKeyFactors(content: string): string[] {
+  const factors: string[] = [];
+  const lowerContent = content.toLowerCase();
+  
+  // Common oil market factors
+  const factorKeywords = [
+    'opec', 'supply', 'demand', 'inventory', 'production', 'refinery',
+    'geopolitical', 'sanctions', 'weather', 'hurricane', 'seasonal',
+    'economic growth', 'recession', 'inflation', 'dollar', 'usd',
+    'china', 'russia', 'venezuela', 'iran', 'saudi arabia',
+    'shale', 'drilling', 'reserves', 'exports', 'imports'
+  ];
+  
+  factorKeywords.forEach(keyword => {
+    if (lowerContent.includes(keyword)) {
+      // Find sentences containing the keyword
+      const sentences = content.split(/[.!?]+/);
+      sentences.forEach(sentence => {
+        if (sentence.toLowerCase().includes(keyword) && sentence.trim().length > 20) {
+          factors.push(sentence.trim());
+        }
+      });
+    }
+  });
+  
+  // Remove duplicates and limit to top 5 factors
+  return [...new Set(factors)].slice(0, 5);
+}
+
+// Create forecast data structure from search result
+function createForecastData(
+  searchResult: WebSearchResult,
+  horizon: string,
+  currentPrice: number
+): ForecastData | null {
+  try {
+    const content = searchResult.content;
+    
+    // Parse forecast price
+    const forecastPrice = parseForecastPrice(content, horizon);
+    if (!forecastPrice) {
+      console.warn(`⚠️ Could not extract forecast price for ${horizon}`);
+      return null;
+    }
+    
+    // Calculate percentage change
+    const percentageChange = calculatePercentageChange(currentPrice, forecastPrice);
+    
+    // Parse confidence level
+    const confidenceLevel = parseConfidenceLevel(content);
+    
+    // Parse key factors
+    const keyFactors = parseKeyFactors(content);
+    
+    // Calculate date range
+    const horizonConfig = FORECAST_HORIZONS.find(h => h.key === horizon);
+    if (!horizonConfig) {
+      throw new Error(`Unknown forecast horizon: ${horizon}`);
+    }
+    
+    const startDate = new Date();
+    const endDate = new Date(startDate.getTime() + (horizonConfig.months * 30 * 24 * 60 * 60 * 1000));
+    
+    // Create source information
+    const sources: SourceInfo[] = [{
+      name: 'Web Search Forecast Analysis',
+      date: searchResult.timestamp,
+      reliability: 'medium' // Default, could be enhanced based on content analysis
+    }];
+    
+    const forecastData: ForecastData = {
+      horizon: horizon as '3-month' | '6-month' | '12-month' | '24-month',
+      forecastPrice,
+      currency: 'USD',
+      dateRange: {
+        start: startDate.toISOString(),
+        end: endDate.toISOString()
+      },
+      percentageChange,
+      sources,
+      methodology: 'Web Search Analysis with Expert Sources',
+      ...(confidenceLevel !== null && { confidenceLevel }),
+      ...(keyFactors.length > 0 && { keyFactors })
+    };
+    
+    return forecastData;
+    
+  } catch (error) {
+    console.error(`❌ Error creating forecast data for ${horizon}:`, error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
+// Generate multi-horizon forecast analysis
+async function generateMultiHorizonForecast(commodityData: CommodityData): Promise<ForecastData[]> {
+  const forecasts: ForecastData[] = [];
+  
+  console.log('\n🔮 Generating Multi-Horizon Forecasts...');
+  
+  for (const horizonConfig of FORECAST_HORIZONS) {
+    try {
+      console.log(`\n--- Processing ${horizonConfig.label} ---`);
+      
+      // Fetch forecast data for this horizon
+      const searchResult = await fetchForecastData(horizonConfig.key, commodityData.currentPrice);
+      
+      if (!searchResult.success) {
+        console.warn(`⚠️ Failed to fetch data for ${horizonConfig.key}`);
+        continue;
+      }
+      
+      // Create forecast data structure
+      const forecastData = createForecastData(searchResult, horizonConfig.key, commodityData.currentPrice);
+      
+      if (forecastData) {
+        forecasts.push(forecastData);
+        console.log(`✅ ${horizonConfig.label}: $${forecastData.forecastPrice} (${forecastData.percentageChange > 0 ? '+' : ''}${forecastData.percentageChange}%)`);
+        
+        if (forecastData.confidenceLevel) {
+          console.log(`   Confidence: ${forecastData.confidenceLevel}%`);
+        }
+        
+        if (forecastData.keyFactors && forecastData.keyFactors.length > 0) {
+          console.log(`   Key Factors: ${forecastData.keyFactors.length} identified`);
+        }
+      } else {
+        console.warn(`⚠️ Could not create forecast data for ${horizonConfig.key}`);
+      }
+      
+      // Add delay between requests to be respectful to the API
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+    } catch (error) {
+      console.error(`❌ Error processing ${horizonConfig.key}:`, error instanceof Error ? error.message : error);
+    }
+  }
+  
+  console.log(`\n✅ Multi-horizon forecast generation completed. Generated ${forecasts.length}/${FORECAST_HORIZONS.length} forecasts.`);
+  
+  return forecasts;
+}
+
+// Aggregate all forecast data into comprehensive commodity analysis
+import { CommodityAnalysis } from './types/commodity';
+
+async function createComprehensiveCommodityAnalysis(commodityData: CommodityData): Promise<CommodityAnalysis> {
+  try {
+    console.log('\n📊 Creating Comprehensive Commodity Analysis...');
+    
+    // Generate forecasts for all horizons
+    const forecasts = await generateMultiHorizonForecast(commodityData);
+    
+    // Determine overall trend based on forecasts
+    let overallTrend: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+    
+    if (forecasts.length > 0) {
+      const avgPercentageChange = forecasts.reduce((sum, f) => sum + f.percentageChange, 0) / forecasts.length;
+      
+      if (avgPercentageChange > 5) {
+        overallTrend = 'bullish';
+      } else if (avgPercentageChange < -5) {
+        overallTrend = 'bearish';
+      }
+    }
+    
+    // Collect risk factors from all forecasts
+    const allKeyFactors = forecasts.flatMap(f => f.keyFactors || []);
+    const riskFactors = [...new Set(allKeyFactors)].slice(0, 10); // Top 10 unique factors
+    
+    // Create comprehensive analysis
+    const analysis: CommodityAnalysis = {
+      commodity: commodityData,
+      forecasts,
+      analysisDate: new Date().toISOString(),
+      overallTrend,
+      marketSentiment: overallTrend === 'bullish' ? 'Positive outlook with expected price increases' :
+                       overallTrend === 'bearish' ? 'Negative outlook with expected price decreases' :
+                       'Mixed signals with uncertain price direction',
+      ...(riskFactors.length > 0 && { riskFactors })
+    };
+    
+    console.log(`✅ Comprehensive analysis completed!`);
+    console.log(`   Overall Trend: ${overallTrend.toUpperCase()}`);
+    console.log(`   Forecasts Generated: ${forecasts.length}`);
+    console.log(`   Risk Factors Identified: ${riskFactors.length}`);
+    
+    return analysis;
+    
+  } catch (error) {
+    console.error('❌ Error creating comprehensive analysis:', error instanceof Error ? error.message : error);
+    throw error;
+  }
+}
+
 // Test API connectivity and web search functionality
 async function testApiConnectivity(): Promise<boolean> {
   try {
@@ -566,6 +920,28 @@ async function main() {
         console.log(`Current crude oil price: $${commodityData.currentPrice} ${commodityData.currency} ${commodityData.unit}`);
         console.log(`Last updated: ${new Date(commodityData.lastUpdated).toLocaleString()}`);
         console.log(`Sources: ${commodityData.sources.map(s => s.name).join(', ')}`);
+        
+        // Generate comprehensive commodity analysis with forecasts
+        const comprehensiveAnalysis = await createComprehensiveCommodityAnalysis(commodityData);
+        
+        console.log('\n🎯 Comprehensive Analysis Summary:');
+        console.log(`   Overall Market Trend: ${comprehensiveAnalysis.overallTrend.toUpperCase()}`);
+        console.log(`   Total Forecasts Generated: ${comprehensiveAnalysis.forecasts.length}`);
+        console.log(`   Market Sentiment: ${comprehensiveAnalysis.marketSentiment}`);
+        
+        if (comprehensiveAnalysis.riskFactors && comprehensiveAnalysis.riskFactors.length > 0) {
+          console.log(`   Risk Factors Identified: ${comprehensiveAnalysis.riskFactors.length}`);
+        }
+        
+        // Display forecast summary
+        if (comprehensiveAnalysis.forecasts.length > 0) {
+          console.log('\n📈 Forecast Summary:');
+          comprehensiveAnalysis.forecasts.forEach(forecast => {
+            const trend = forecast.percentageChange > 0 ? '📈' : forecast.percentageChange < 0 ? '📉' : '➡️';
+            console.log(`   ${trend} ${forecast.horizon}: $${forecast.forecastPrice} (${forecast.percentageChange > 0 ? '+' : ''}${forecast.percentageChange}%)`);
+          });
+        }
+        
       } else {
         console.error('❌ Failed to extract or validate commodity data');
       }

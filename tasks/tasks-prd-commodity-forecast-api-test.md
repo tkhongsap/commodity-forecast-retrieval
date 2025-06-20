@@ -32,7 +32,7 @@
   - [x] 2.3 Create reusable function for making web search queries with proper error handling
   - [x] 2.4 Test API connectivity and web search functionality with simple query
 
-- [ ] 3.0 Crude Oil Data Retrieval and Processing Logic
+- [x] 3.0 Crude Oil Data Retrieval and Processing Logic
   - [x] 3.1 Create TypeScript interfaces for commodity data structure (CommodityData, ForecastData, SourceInfo)
   - [x] 3.2 Implement function to fetch current crude oil (CL=F) price via web search
   - [x] 3.3 Create parser to extract price data from web search results
@@ -40,13 +40,13 @@
   - [x] 3.5 Implement source attribution extraction from search results
 
 - [ ] 4.0 Multi-Horizon Forecast Generation and Analysis
-  - [ ] 4.1 Create forecast query generator for 3-month outlook with specific prompts
-  - [ ] 4.2 Create forecast query generator for 6-month outlook with specific prompts
-  - [ ] 4.3 Create forecast query generator for 12-month outlook with specific prompts
-  - [ ] 4.4 Create forecast query generator for 24-month outlook with specific prompts
-  - [ ] 4.5 Implement percentage change calculation logic between current and forecasted prices
-  - [ ] 4.6 Extract confidence levels and date ranges from forecast results
-  - [ ] 4.7 Aggregate all forecast data into comprehensive data structure
+  - [x] 4.1 Create forecast query generator for 3-month outlook with specific prompts
+  - [x] 4.2 Create forecast query generator for 6-month outlook with specific prompts
+  - [x] 4.3 Create forecast query generator for 12-month outlook with specific prompts
+  - [x] 4.4 Create forecast query generator for 24-month outlook with specific prompts
+  - [x] 4.5 Implement percentage change calculation logic between current and forecasted prices
+  - [x] 4.6 Extract confidence levels and date ranges from forecast results
+  - [x] 4.7 Aggregate all forecast data into comprehensive data structure
 
 - [ ] 5.0 Output Formatting and File Management System
   - [ ] 5.1 Create JSON formatter utility for structured data output
