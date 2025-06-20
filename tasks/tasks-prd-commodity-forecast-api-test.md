@@ -26,18 +26,18 @@
   - [x] 1.4 Configure .env file with OpenAI API key (following existing pattern)
   - [x] 1.5 Add npm scripts for running and testing the application
 
-- [ ] 2.0 OpenAI API Integration with Web Search Functionality
+- [x] 2.0 OpenAI API Integration with Web Search Functionality
   - [x] 2.1 Set up OpenAI client initialization with environment variable loading
   - [x] 2.2 Implement basic web search function using chat.completions.create with gpt-4o-search-preview model
   - [x] 2.3 Create reusable function for making web search queries with proper error handling
   - [x] 2.4 Test API connectivity and web search functionality with simple query
 
 - [ ] 3.0 Crude Oil Data Retrieval and Processing Logic
-  - [ ] 3.1 Create TypeScript interfaces for commodity data structure (CommodityData, ForecastData, SourceInfo)
-  - [ ] 3.2 Implement function to fetch current crude oil (CL=F) price via web search
-  - [ ] 3.3 Create parser to extract price data from web search results
-  - [ ] 3.4 Add data validation logic for retrieved price information
-  - [ ] 3.5 Implement source attribution extraction from search results
+  - [x] 3.1 Create TypeScript interfaces for commodity data structure (CommodityData, ForecastData, SourceInfo)
+  - [x] 3.2 Implement function to fetch current crude oil (CL=F) price via web search
+  - [x] 3.3 Create parser to extract price data from web search results
+  - [x] 3.4 Add data validation logic for retrieved price information
+  - [x] 3.5 Implement source attribution extraction from search results
 
 - [ ] 4.0 Multi-Horizon Forecast Generation and Analysis
   - [ ] 4.1 Create forecast query generator for 3-month outlook with specific prompts
