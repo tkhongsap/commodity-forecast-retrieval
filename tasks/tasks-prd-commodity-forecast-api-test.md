@@ -20,11 +20,11 @@
 ## Tasks
 
 - [ ] 1.0 Project Setup and Environment Configuration
-  - [ ] 1.1 Initialize TypeScript project with package.json and dependencies (openai, dotenv, ts-node, @types/node)
-  - [ ] 1.2 Create tsconfig.json with appropriate TypeScript configuration for Node.js
-  - [ ] 1.3 Set up project directory structure (src/, output/, types/, utils/)
-  - [ ] 1.4 Configure .env file with OpenAI API key (following existing pattern)
-  - [ ] 1.5 Add npm scripts for running and testing the application
+  - [x] 1.1 Initialize TypeScript project with package.json and dependencies (openai, dotenv, ts-node, @types/node)
+  - [x] 1.2 Create tsconfig.json with appropriate TypeScript configuration for Node.js
+  - [x] 1.3 Set up project directory structure (src/, output/, types/, utils/)
+  - [x] 1.4 Configure .env file with OpenAI API key (following existing pattern)
+  - [x] 1.5 Add npm scripts for running and testing the application
 
 - [ ] 2.0 OpenAI API Integration with Web Search Functionality
   - [ ] 2.1 Set up OpenAI client initialization with environment variable loading

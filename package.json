@@ -1,0 +1,39 @@
+{
+  "name": "commodity-forecast-test",
+  "version": "1.0.0",
+  "description": "TypeScript test script for OpenAI API commodity forecasting with web search",
+  "main": "dist/commodity-forecast-test.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "ts-node src/commodity-forecast-test.ts",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "dev": "ts-node --watch src/commodity-forecast-test.ts"
+  },
+  "keywords": ["openai", "commodity", "forecast", "typescript", "web-search"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.5.0",
+    "openai": "^5.5.1"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.0.3",
+    "jest": "^30.0.2",
+    "ts-jest": "^29.4.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "roots": ["<rootDir>/src"],
+    "testMatch": ["**/__tests__/**/*.ts", "**/?(*.)+(spec|test).ts"],
+    "collectCoverageFrom": [
+      "src/**/*.ts",
+      "!src/**/*.test.ts",
+      "!src/**/*.spec.ts"
+    ]
+  }
+}
