@@ -39,7 +39,7 @@
   - [x] 3.4 Add data validation logic for retrieved price information
   - [x] 3.5 Implement source attribution extraction from search results
 
-- [ ] 4.0 Multi-Horizon Forecast Generation and Analysis
+- [x] 4.0 Multi-Horizon Forecast Generation and Analysis
   - [x] 4.1 Create forecast query generator for 3-month outlook with specific prompts
   - [x] 4.2 Create forecast query generator for 6-month outlook with specific prompts
   - [x] 4.3 Create forecast query generator for 12-month outlook with specific prompts
@@ -49,10 +49,10 @@
   - [x] 4.7 Aggregate all forecast data into comprehensive data structure
 
 - [ ] 5.0 Output Formatting and File Management System
-  - [ ] 5.1 Create JSON formatter utility for structured data output
-  - [ ] 5.2 Create table formatter utility for human-readable console display
-  - [ ] 5.3 Implement file writing functionality for JSON output (output/forecast-results.json)
-  - [ ] 5.4 Implement file writing functionality for table output (output/forecast-results.txt)
-  - [ ] 5.5 Create console display function with formatted table output
-  - [ ] 5.6 Add timestamp functionality for data retrieval tracking
-  - [ ] 5.7 Integrate all output methods into main execution flow 
+  - [x] 5.1 Create JSON formatter utility for structured data output
+  - [x] 5.2 Create table formatter utility for human-readable console display
+  - [x] 5.3 Implement file writing functionality for JSON output (output/forecast-results.json)
+  - [x] 5.4 Implement file writing functionality for table output (output/forecast-results.txt)
+  - [x] 5.5 Create console display function with formatted table output
+  - [x] 5.6 Add timestamp functionality for data retrieval tracking
+  - [x] 5.7 Integrate all output methods into main execution flow 

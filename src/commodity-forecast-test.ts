@@ -10,6 +10,12 @@ import {
   ForecastData,
   FORECAST_HORIZONS
 } from './types/commodity';
+import { 
+  outputComprehensiveAnalysis,
+  displayCommodityDataInConsole,
+  displayForecastSummaryInConsole,
+  trackDataRetrieval
+} from './utils/formatter';
 
 // Load environment variables
 config();
@@ -916,15 +922,26 @@ async function main() {
       const commodityData = await extractAndValidateCommodityData(searchResult);
       
       if (commodityData) {
+        // Track successful data extraction
+        trackDataRetrieval('Commodity Data Extraction', true, `Price: $${commodityData.currentPrice}`);
+        
         console.log('\n✅ Commodity data extraction and validation completed');
         console.log(`Current crude oil price: $${commodityData.currentPrice} ${commodityData.currency} ${commodityData.unit}`);
         console.log(`Last updated: ${new Date(commodityData.lastUpdated).toLocaleString()}`);
         console.log(`Sources: ${commodityData.sources.map(s => s.name).join(', ')}`);
         
+        // Display commodity data in formatted table
+        displayCommodityDataInConsole(commodityData);
+        
         // Generate comprehensive commodity analysis with forecasts
+        trackDataRetrieval('Multi-Horizon Forecast Generation', true, 'Starting forecast analysis');
+        
         const comprehensiveAnalysis = await createComprehensiveCommodityAnalysis(commodityData);
         
-        console.log('\n🎯 Comprehensive Analysis Summary:');
+        // Track successful analysis completion
+        trackDataRetrieval('Comprehensive Analysis', true, `Generated ${comprehensiveAnalysis.forecasts.length} forecasts`);
+        
+        console.log('\n🎯 Quick Analysis Summary:');
         console.log(`   Overall Market Trend: ${comprehensiveAnalysis.overallTrend.toUpperCase()}`);
         console.log(`   Total Forecasts Generated: ${comprehensiveAnalysis.forecasts.length}`);
         console.log(`   Market Sentiment: ${comprehensiveAnalysis.marketSentiment}`);
@@ -933,16 +950,27 @@ async function main() {
           console.log(`   Risk Factors Identified: ${comprehensiveAnalysis.riskFactors.length}`);
         }
         
-        // Display forecast summary
+        // Display forecast summary in console
         if (comprehensiveAnalysis.forecasts.length > 0) {
-          console.log('\n📈 Forecast Summary:');
-          comprehensiveAnalysis.forecasts.forEach(forecast => {
-            const trend = forecast.percentageChange > 0 ? '📈' : forecast.percentageChange < 0 ? '📉' : '➡️';
-            console.log(`   ${trend} ${forecast.horizon}: $${forecast.forecastPrice} (${forecast.percentageChange > 0 ? '+' : ''}${forecast.percentageChange}%)`);
-          });
+          displayForecastSummaryInConsole(comprehensiveAnalysis.forecasts);
         }
         
+        // Output comprehensive analysis (table + files)
+        console.log('\n' + '='.repeat(80));
+        console.log('🎉 GENERATING COMPREHENSIVE OUTPUT...');
+        console.log('='.repeat(80));
+        
+        const outputResult = await outputComprehensiveAnalysis(comprehensiveAnalysis);
+        
+        console.log('\n🎊 COMMODITY FORECAST ANALYSIS COMPLETED SUCCESSFULLY! 🎊');
+        console.log('✅ All data has been processed, analyzed, and saved');
+        console.log(`📊 Console: Full analysis displayed`);
+        console.log(`📁 Files: Saved to ${outputResult.filesWritten.jsonPath.split('/').pop()} and ${outputResult.filesWritten.tablePath.split('/').pop()}`);
+        console.log(`📝 Tracking: All operations logged with timestamps`);
+        
       } else {
+        // Track failed data extraction
+        trackDataRetrieval('Commodity Data Extraction', false, 'Failed to extract or validate data');
         console.error('❌ Failed to extract or validate commodity data');
       }
     } else {
