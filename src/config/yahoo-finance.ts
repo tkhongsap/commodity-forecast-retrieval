@@ -454,8 +454,8 @@ export const TIME_CONFIG = {
     '2y': { label: '2 years', days: 730 },
     '5y': { label: '5 years', days: 1825 },
     '10y': { label: '10 years', days: 3650 },
-    'ytd': { label: 'Year to date', days: null },
-    'max': { label: 'Maximum available', days: null }
+    'ytd': { label: 'Year to date', days: null as null },
+    'max': { label: 'Maximum available', days: null as null }
   },
 
   /** Default configurations for different use cases */
@@ -635,6 +635,206 @@ export type CommodityCategory = 'energy' | 'metals' | 'agriculture';
 export type ContractType = 'spot' | 'future' | 'option';
 
 /**
+ * Futures Configuration
+ */
+export const FUTURES_CONFIG = {
+  /** Contract month codes for futures symbols */
+  MONTH_CODES: {
+    'F': 'JAN', 'G': 'FEB', 'H': 'MAR', 'J': 'APR',
+    'K': 'MAY', 'M': 'JUN', 'N': 'JUL', 'Q': 'AUG',
+    'U': 'SEP', 'V': 'OCT', 'X': 'NOV', 'Z': 'DEC'
+  },
+  
+  /** Quarterly contract months for better liquidity */
+  QUARTERLY_MONTHS: ['MAR', 'JUN', 'SEP', 'DEC'],
+  
+  /** Standard forecast horizons in months */
+  STANDARD_HORIZONS: [3, 6, 12, 24],
+  
+  /** Contract expiration rules by commodity */
+  EXPIRATION_RULES: {
+    'CL': { // Crude Oil WTI
+      dayOfMonth: 20,
+      monthOffset: -1,
+      businessDaysOnly: true,
+      exchange: 'NYMEX'
+    },
+    'GC': { // Gold
+      dayOfMonth: 27,
+      monthOffset: -1,
+      businessDaysOnly: true,
+      exchange: 'COMEX'
+    },
+    'NG': { // Natural Gas
+      dayOfMonth: 25,
+      monthOffset: -1,
+      businessDaysOnly: true,
+      exchange: 'NYMEX'
+    }
+  },
+  
+  /** Cache TTL configuration for futures data */
+  CACHE_TTL: {
+    SPOT_PRICES: 1 * 60 * 1000,        // 1 minute
+    FRONT_MONTH: 5 * 60 * 1000,        // 5 minutes
+    NEAR_TERM: 15 * 60 * 1000,         // 15 minutes (2-6 months)
+    MEDIUM_TERM: 1 * 60 * 60 * 1000,   // 1 hour (6-12 months)
+    LONG_TERM: 4 * 60 * 60 * 1000,     // 4 hours (12+ months)
+    CURVE_DATA: 2 * 60 * 60 * 1000,    // 2 hours (full curve)
+    HISTORICAL_CURVES: 24 * 60 * 60 * 1000 // 24 hours
+  },
+  
+  /** Validation rules for futures contracts */
+  VALIDATION: {
+    MIN_DAYS_TO_EXPIRY: 1,
+    MAX_DAYS_TO_EXPIRY: 1095, // 3 years
+    WARNING_DAYS_TO_EXPIRY: 30,
+    MAX_CONTRACT_SPREAD: 0.20, // 20% spread between contracts
+    MIN_CURVE_POINTS: 2,
+    MAX_CURVE_POINTS: 12
+  }
+} as const;
+
+/**
+ * Risk Factor Categories and Impact Ranges Configuration
+ */
+export const RISK_FACTOR_CONFIG = {
+  CATEGORIES: {
+    GEOPOLITICAL: {
+      category: 'geopolitical',
+      maxImpact: 0.15, // 15% maximum adjustment
+      typicalRange: [0.02, 0.08], // 2-8% typical range
+      factors: [
+        'international sanctions',
+        'trade wars',
+        'regional conflicts',
+        'diplomatic tensions',
+        'political instability'
+      ],
+      weight: 1.0 // Relative importance weight
+    },
+    SUPPLY_DEMAND: {
+      category: 'supply_demand',
+      maxImpact: 0.25, // 25% maximum adjustment
+      typicalRange: [0.03, 0.12], // 3-12% typical range
+      factors: [
+        'production cuts',
+        'demand spikes',
+        'supply disruptions',
+        'inventory levels',
+        'seasonal patterns'
+      ],
+      weight: 1.2 // Higher weight for supply/demand
+    },
+    ECONOMIC: {
+      category: 'economic',
+      maxImpact: 0.20, // 20% maximum adjustment
+      typicalRange: [0.02, 0.10], // 2-10% typical range
+      factors: [
+        'interest rates',
+        'inflation',
+        'currency fluctuations',
+        'economic growth',
+        'monetary policy'
+      ],
+      weight: 1.1
+    },
+    WEATHER: {
+      category: 'weather',
+      maxImpact: 0.30, // 30% maximum adjustment (highest for weather-sensitive commodities)
+      typicalRange: [0.05, 0.15], // 5-15% typical range
+      factors: [
+        'extreme weather events',
+        'seasonal patterns',
+        'climate change impacts',
+        'natural disasters',
+        'drought conditions'
+      ],
+      weight: 0.8 // Lower weight for most commodities except agricultural
+    },
+    REGULATORY: {
+      category: 'regulatory',
+      maxImpact: 0.18, // 18% maximum adjustment
+      typicalRange: [0.02, 0.09], // 2-9% typical range
+      factors: [
+        'policy changes',
+        'environmental regulations',
+        'safety standards',
+        'tax policy',
+        'trade agreements'
+      ],
+      weight: 0.9
+    }
+  },
+  
+  /** Time horizon scaling factors for risk impacts */
+  TIME_SCALING: {
+    SHORT_TERM: { months: 3, scale: 0.7 }, // Shorter term = lower risk impact
+    MEDIUM_TERM: { months: 6, scale: 1.0 }, // Base scaling
+    LONG_TERM: { months: 12, scale: 1.3 }, // Longer term = higher uncertainty
+    VERY_LONG_TERM: { months: 24, scale: 1.6 }
+  },
+  
+  /** Confidence thresholds for risk assessments */
+  CONFIDENCE_THRESHOLDS: {
+    HIGH: 0.8,
+    MEDIUM: 0.6,
+    LOW: 0.4,
+    MINIMUM: 0.2
+  },
+  
+  /** Risk combination rules when multiple risks present */
+  COMBINATION_RULES: {
+    MAX_COMBINED_IMPACT: 0.35, // Maximum total risk adjustment (35%)
+    DIVERSIFICATION_FACTOR: 0.8, // Reduce impact when multiple risks present
+    CORRELATION_PENALTIES: {
+      GEOPOLITICAL_SUPPLY: 0.9, // Geopolitical and supply risks often correlated
+      ECONOMIC_DEMAND: 0.85, // Economic and demand factors correlated
+      WEATHER_SUPPLY: 0.8 // Weather and supply often related
+    }
+  }
+} as const;
+
+/**
+ * Forecasting Method Configuration
+ */
+export const FORECASTING_CONFIG = {
+  /** Method selection preferences */
+  METHODS: {
+    HYBRID: {
+      name: 'Market Consensus + Risk Adjustment',
+      costEfficiency: 0.75, // 75% cost reduction vs web search
+      accuracy: 'high',
+      requiredServices: ['yahoo-finance', 'risk-analyzer'],
+      fallback: 'web-search'
+    },
+    WEB_SEARCH: {
+      name: 'AI Web Search Analysis',
+      costEfficiency: 0.25, // Higher cost but no external dependencies
+      accuracy: 'medium',
+      requiredServices: ['web-search'],
+      fallback: null as null
+    }
+  },
+  
+  /** Cost calculation parameters */
+  COST_ESTIMATES: {
+    OPENAI_GPT4_PER_1K_TOKENS: 0.03,
+    WEB_SEARCH_PER_QUERY: 0.10,
+    YAHOO_FINANCE_PER_REQUEST: 0.001,
+    TARGET_COST_REDUCTION: 0.75 // 75% cost reduction target
+  },
+  
+  /** Performance targets */
+  PERFORMANCE_TARGETS: {
+    RESPONSE_TIME_MS: 15000, // 15 seconds max
+    CACHE_HIT_RATE: 0.60, // 60% cache hit rate target
+    API_SUCCESS_RATE: 0.95, // 95% API success rate
+    FORECAST_ACCURACY_THRESHOLD: 0.70 // 70% accuracy target
+  }
+} as const;
+
+/**
  * Export configuration for easy access
  */
 export default {
@@ -648,5 +848,8 @@ export default {
   time: TIME_CONFIG,
   errors: ERROR_CONFIG,
   marketHours: MARKET_HOURS,
+  futures: FUTURES_CONFIG,
+  riskFactors: RISK_FACTOR_CONFIG,
+  forecasting: FORECASTING_CONFIG,
   defaults: DEFAULT_YAHOO_FINANCE_CONFIG
 } as const;
