@@ -553,31 +553,43 @@ function calculatePercentageChange(currentPrice: number, forecastPrice: number):
 function parseForecastPrice(content: string, horizon: string): number | null {
   const lowerContent = content.toLowerCase();
   
-  // Multiple patterns to extract forecast prices
+  // Extract horizon number for targeted parsing
+  const horizonMonths = parseInt(horizon.split('-')[0] || '3');
+  
+  // Enhanced patterns with more specific targeting
   const pricePatterns = [
-    // Range patterns: "$70-80", "$70 to $80", "$70-$80"
-    /\$(\d+\.?\d*)\s*(?:to|-|–)\s*\$?(\d+\.?\d*)/gi,
-    // Single forecast: "forecast $75", "expected $75", "target $75"
-    /(?:forecast|expected|target|predict)[ed]?\s*(?:price\s*)?:?\s*\$(\d+\.?\d*)/gi,
-    // Price with context: "oil price $75", "crude at $75"
-    /(?:oil|crude|price|wti)\s+(?:price\s+)?(?:at\s+)?\$(\d+\.?\d*)/gi,
-    // Month-specific patterns: "3 months: $75"
-    new RegExp(`${horizon.split('-')[0]}\\s*months?[\\s:]*\\$?(\\d+\\.?\\d*)`, 'gi')
+    // Horizon-specific patterns: "in 3 months: $75", "3-month forecast: $75"
+    new RegExp(`(?:in\\s+)?${horizonMonths}\\s*months?[\\s:]*(?:forecast|outlook|target|expected)?[\\s:]*\\$?(\\d+\\.?\\d*)`, 'gi'),
+    new RegExp(`${horizonMonths}[\\s-]*month[\\s-]*(?:forecast|outlook|target|expected)[\\s:]*\\$?(\\d+\\.?\\d*)`, 'gi'),
+    
+    // Range patterns: "$70-80", "$70 to $80", "$70-$80" (take midpoint)
+    /(?:forecast|expected|target|outlook)[\s:]*\$?(\d+\.?\d*)\s*(?:to|-|–)\s*\$?(\d+\.?\d*)/gi,
+    
+    // Context-specific patterns
+    /(?:price|crude|oil|wti)\s+(?:forecast|expected|target|outlook)[\s:]*\$?(\d+\.?\d*)/gi,
+    
+    // General forecast patterns (less specific, lower priority)
+    /(?:forecast|expected|target|predict)(?:ed)?\s*(?:price\s*)?:?\s*\$?(\d+\.?\d*)/gi,
   ];
   
   let extractedPrice: number | null = null;
+  let bestMatch: { price: number; confidence: number } | null = null;
   
-  for (const pattern of pricePatterns) {
+  for (let i = 0; i < pricePatterns.length; i++) {
+    const pattern = pricePatterns[i];
+    if (!pattern) continue;
     const matches = [...lowerContent.matchAll(pattern)];
     
     if (matches.length > 0 && matches[0]) {
       let price: number;
+      let confidence = 1.0 - (i * 0.1); // Higher confidence for more specific patterns
       
       if (matches[0][2]) {
         // Range pattern - take the average
         const lowPrice = parseFloat(matches[0][1] || '0');
         const highPrice = parseFloat(matches[0][2] || '0');
         price = (lowPrice + highPrice) / 2;
+        confidence += 0.1; // Range patterns are often more reliable
       } else if (matches[0][1]) {
         // Single price pattern
         price = parseFloat(matches[0][1]);
@@ -587,10 +599,22 @@ function parseForecastPrice(content: string, horizon: string): number | null {
       
       // Validate the price is reasonable for oil
       if (!isNaN(price) && price > 0 && price < 1000) {
-        extractedPrice = price;
-        break;
+        // Boost confidence for horizon-specific matches
+        if (i === 0 || i === 1) {
+          confidence += 0.2;
+        }
+        
+        // Only use this price if it's better than what we have
+        if (!bestMatch || confidence > bestMatch.confidence) {
+          bestMatch = { price, confidence };
+        }
       }
     }
+  }
+  
+  if (bestMatch) {
+    extractedPrice = bestMatch.price;
+    console.log(`   Extracted price: $${extractedPrice} (confidence: ${bestMatch.confidence.toFixed(2)})`);
   }
   
   return extractedPrice;
@@ -770,7 +794,87 @@ async function generateMultiHorizonForecast(commodityData: CommodityData): Promi
     }
   }
   
-  console.log(`\n✅ Multi-horizon forecast generation completed. Generated ${forecasts.length}/${FORECAST_HORIZONS.length} forecasts.`);
+  // Validate forecast diversity before returning
+  const validatedForecasts = validateForecastDiversity(forecasts, commodityData.currentPrice);
+  
+  console.log(`\n✅ Multi-horizon forecast generation completed. Generated ${validatedForecasts.length}/${FORECAST_HORIZONS.length} forecasts.`);
+  
+  return validatedForecasts;
+}
+
+// Validation function to detect suspicious forecast patterns
+function validateForecastDiversity(forecasts: ForecastData[], _currentPrice: number): ForecastData[] {
+  if (forecasts.length < 2) {
+    return forecasts; // Not enough data to validate diversity
+  }
+  
+  console.log('\n🔍 Validating forecast diversity...');
+  
+  // Check for identical or suspiciously similar forecasts
+  const prices = forecasts.map(f => f.forecastPrice);
+  const uniquePrices = [...new Set(prices)];
+  
+  if (uniquePrices.length === 1) {
+    console.warn('⚠️ WARNING: All forecasts have identical prices - this is suspicious!');
+    console.warn(`   All forecasts: $${uniquePrices[0]}`);
+    console.warn('   This suggests a parsing issue or insufficient forecast variation.');
+    
+    // Log the forecast details for debugging
+    forecasts.forEach(forecast => {
+      console.warn(`   ${forecast.horizon}: $${forecast.forecastPrice} (${forecast.percentageChange}%)`);
+    });
+    
+    return []; // Return empty array to indicate validation failure
+  }
+  
+  // Check for minimal variation (less than 2% difference between min and max)
+  const minPrice = Math.min(...prices);
+  const maxPrice = Math.max(...prices);
+  const priceVariation = ((maxPrice - minPrice) / minPrice) * 100;
+  
+  if (priceVariation < 2) {
+    console.warn(`⚠️ WARNING: Very low price variation (${priceVariation.toFixed(1)}%) across forecasts`);
+    console.warn('   This may indicate parsing issues or unrealistic forecast similarity.');
+    
+    // Still return the forecasts but with warning
+    forecasts.forEach(forecast => {
+      console.warn(`   ${forecast.horizon}: $${forecast.forecastPrice} (${forecast.percentageChange}%)`);
+    });
+  }
+  
+  // Check for unrealistic patterns (e.g., all forecasts too close to current price)
+  const allChanges = forecasts.map(f => Math.abs(f.percentageChange));
+  const maxChange = Math.max(...allChanges);
+  
+  if (maxChange < 0.5) {
+    console.warn('⚠️ WARNING: All forecasts are very close to current price');
+    console.warn('   This may indicate the parsing is picking up current price instead of forecasts.');
+  }
+  
+  // Validate that longer horizons generally have more uncertainty
+  const sortedByHorizon = [...forecasts].sort((a, b) => {
+    const aMonths = parseInt(a.horizon.split('-')[0] || '3');
+    const bMonths = parseInt(b.horizon.split('-')[0] || '3');
+    return aMonths - bMonths;
+  });
+  
+  // Check if longer-term forecasts show reasonable variation
+  if (sortedByHorizon.length >= 3) {
+    const shortTerm = sortedByHorizon[0];
+    const longTerm = sortedByHorizon[sortedByHorizon.length - 1];
+    
+    if (shortTerm && longTerm) {
+      const shortTermChange = Math.abs(shortTerm.percentageChange);
+      const longTermChange = Math.abs(longTerm.percentageChange);
+    
+      if (longTermChange <= shortTermChange) {
+        console.warn('⚠️ WARNING: Long-term forecasts show less variation than short-term');
+        console.warn('   This is unusual - longer horizons typically have more uncertainty.');
+      }
+    }
+  }
+  
+  console.log('✅ Forecast diversity validation completed');
   
   return forecasts;
 }
