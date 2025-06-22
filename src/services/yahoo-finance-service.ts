@@ -26,10 +26,7 @@ import {
   HistoricalPricePoint,
   YahooFinanceParams,
   YahooFinanceValidation,
-  MarketStatus,
-  FuturesContractData,
-  FuturesContractOptions,
-  FuturesCurveOptions
+  MarketStatus
 } from '../types/yahoo-finance';
 import { 
   getCommodityConfig,
@@ -41,7 +38,7 @@ import {
   CommoditySymbolKey
 } from '../config/yahoo-finance';
 import { FuturesMapper } from '../utils/futures-mapper';
-import { FuturesContract, FuturesCurve } from '../types/commodity';
+import { FuturesContract, FuturesCurve, FuturesContractOptions, FuturesCurveOptions } from '../types/commodity';
 
 /**
  * Service error types for specific Yahoo Finance operations

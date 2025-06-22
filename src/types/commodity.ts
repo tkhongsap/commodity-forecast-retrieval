@@ -158,4 +158,26 @@ export interface ParsedPriceData {
   unit: string;
   source: string;
   confidence: number; // 0-1 scale
+}
+
+// Futures contract options for API requests
+export interface FuturesContractOptions {
+  maxContracts?: number;
+  minDaysToExpiry?: number;
+  maxDaysToExpiry?: number;
+  maxDaysToExpiration?: number;
+  includeLiquidityMetrics?: boolean;
+  validateExpiration?: boolean;
+}
+
+// Futures curve options for API requests  
+export interface FuturesCurveOptions {
+  maxContracts?: number;
+  minDaysToExpiry?: number;
+  maxDaysToExpiry?: number;
+  includeLiquidityMetrics?: boolean;
+  contractMonths?: string[];
+  contractYear?: number;
+  validateCurve?: boolean;
+  includeAnalytics?: boolean;
 } 

@@ -2,6 +2,153 @@ import { CommodityAnalysis, ForecastData, CommodityData, MarketConsensusForcast 
 import { promises as fs } from 'fs';
 import { join } from 'path';
 
+// Extract and summarize the most relevant key factor from forecast data
+export function extractKeyFactor(forecast: ForecastData): string {
+  try {
+    // Handle edge cases
+    if (!forecast.keyFactors || forecast.keyFactors.length === 0) {
+      return forecast.percentageChange > 0 ? 'Bullish outlook' : 
+             forecast.percentageChange < 0 ? 'Bearish outlook' : 'Neutral outlook';
+    }
+
+    const factors = forecast.keyFactors;
+    const isPositive = forecast.percentageChange > 0;
+    
+    // Priority keywords for bullish factors
+    const bullishKeywords = [
+      'supply risk', 'geopolitical', 'tensions', 'sanctions', 'conflict', 'strikes',
+      'production cuts', 'opec cuts', 'demand growth', 'inventory draw',
+      'hurricane', 'disruption', 'shortage', 'premium'
+    ];
+    
+    // Priority keywords for bearish factors  
+    const bearishKeywords = [
+      'surplus', 'oversupply', 'production increase', 'demand decline', 'recession',
+      'economic slowdown', 'inventory build', 'weak demand', 'glut', 'oversupplied'
+    ];
+    
+    // Find the most relevant factor based on forecast direction
+    const relevantKeywords = isPositive ? bullishKeywords : bearishKeywords;
+    
+    // Score factors based on keyword matches and relevance
+    let bestFactor = factors[0];
+    let bestScore = 0;
+    
+    for (const factor of factors) {
+      const lowerFactor = factor.toLowerCase();
+      let score = 0;
+      
+      // Score based on relevant keywords
+      for (const keyword of relevantKeywords) {
+        if (lowerFactor.includes(keyword)) {
+          score += 2; // Higher weight for direction-matching keywords
+        }
+      }
+      
+      // Score based on general impact keywords
+      const impactKeywords = ['opec', 'iran', 'russia', 'china', 'us', 'strait', 'hormuz'];
+      for (const keyword of impactKeywords) {
+        if (lowerFactor.includes(keyword)) {
+          score += 1;
+        }
+      }
+      
+      // Prefer shorter, more specific factors
+      if (factor.length < 60) {
+        score += 0.5;
+      }
+      
+      if (score > bestScore) {
+        bestScore = score;
+        bestFactor = factor;
+      }
+    }
+    
+    // Generate concise 15-20 character label
+    return createConciseLabel(bestFactor || factors[0], isPositive);
+    
+  } catch (error) {
+    console.error('Error extracting key factor:', error);
+    return forecast.percentageChange > 0 ? 'Bullish' : 'Bearish';
+  }
+}
+
+// Create a concise 15-20 character label from a factor
+function createConciseLabel(factor: string, isPositive: boolean): string {
+  const lowerFactor = factor.toLowerCase();
+  
+  // Specific mappings for common factors
+  const mappings: { [key: string]: string } = {
+    // Geopolitical
+    'iran': isPositive ? 'Iran tensions' : 'Iran supply',
+    'israel': 'Israel conflict',
+    'russia': isPositive ? 'Russia sanctions' : 'Russia supply',
+    'opec': isPositive ? 'OPEC cuts' : 'OPEC increase',
+    'strait': 'Hormuz risk',
+    'hormuz': 'Hormuz risk',
+    'geopolitical': 'Geopolitical',
+    
+    // Supply/Demand
+    'supply risk': 'Supply risk',
+    'surplus': 'Supply surplus',
+    'oversupply': 'Oversupply',
+    'production': isPositive ? 'Supply cuts' : 'Supply increase',
+    'demand': isPositive ? 'Demand growth' : 'Demand decline',
+    'inventory': isPositive ? 'Inventory draw' : 'Inventory build',
+    
+    // Economic
+    'recession': 'Recession risk',
+    'economic': isPositive ? 'Econ growth' : 'Econ slowdown',
+    'china': isPositive ? 'China demand' : 'China slowdown',
+    
+    // Weather/Natural
+    'hurricane': 'Hurricane risk',
+    'weather': 'Weather impact'
+  };
+  
+  // Try direct mappings first
+  for (const [keyword, label] of Object.entries(mappings)) {
+    if (lowerFactor.includes(keyword)) {
+      return label.substring(0, 20);
+    }
+  }
+  
+  // Extract key terms and create label
+  const terms = factor.split(/[\s,]+/).filter(term => term.length > 2);
+  
+  if (terms.length === 0) {
+    return isPositive ? 'Bullish factor' : 'Bearish factor';
+  }
+  
+  // Try to find the most important term
+  const importantTerms = terms.filter(term => {
+    const lower = term.toLowerCase();
+    return ['opec', 'iran', 'russia', 'china', 'supply', 'demand', 'production'].some(key => 
+      lower.includes(key)
+    );
+  });
+  
+  let finalLabel = '';
+  if (importantTerms.length > 0) {
+    finalLabel = importantTerms[0] || '';
+  } else {
+    finalLabel = terms[0] || '';
+  }
+  
+  // Add direction indicator if space allows
+  if (finalLabel.length < 15) {
+    if (isPositive && !lowerFactor.includes('cut') && !lowerFactor.includes('risk')) {
+      finalLabel += ' support';
+    } else if (!isPositive && !lowerFactor.includes('surplus') && !lowerFactor.includes('decline')) {
+      finalLabel += ' pressure';
+    }
+  }
+  
+  // Clean up and limit length
+  finalLabel = finalLabel.replace(/[^\w\s]/g, '').trim();
+  return finalLabel.substring(0, 20);
+}
+
 // JSON formatter utility for structured data output
 export function formatAnalysisAsJSON(analysis: CommodityAnalysis): string {
   try {
@@ -47,7 +194,8 @@ export function formatAnalysisAsJSON(analysis: CommodityAnalysis): string {
         },
         factors: {
           keyFactors: forecast.keyFactors || [],
-          factorCount: (forecast.keyFactors || []).length
+          factorCount: (forecast.keyFactors || []).length,
+          primaryFactor: extractKeyFactor(forecast)
         },
         sources: forecast.sources
       }))
@@ -157,10 +305,10 @@ export function formatAnalysisAsTable(analysis: CommodityAnalysis): string {
       lines.push('─'.repeat(80));
       
       // Table header
-      lines.push('┌─────────────┬─────────────┬─────────────┬──────────────┬─────────────┐');
-      lines.push('│   Horizon   │   Current   │  Forecast   │    Change    │ Confidence  │');
-      lines.push('│             │    Price    │    Price    │      %       │    Level    │');
-      lines.push('├─────────────┼─────────────┼─────────────┼──────────────┼─────────────┤');
+      lines.push('┌─────────────┬─────────────┬─────────────┬──────────────┬─────────────┬──────────────────────┐');
+      lines.push('│   Horizon   │   Current   │  Forecast   │    Change    │ Confidence  │      Key Factor      │');
+      lines.push('│             │    Price    │    Price    │      %       │    Level    │                      │');
+      lines.push('├─────────────┼─────────────┼─────────────┼──────────────┼─────────────┼──────────────────────┤');
       
       // Table rows
       analysis.forecasts.forEach(forecast => {
@@ -169,11 +317,12 @@ export function formatAnalysisAsTable(analysis: CommodityAnalysis): string {
         const forecastPrice = `$${forecast.forecastPrice}`.padEnd(11);
         const change = `${forecast.percentageChange > 0 ? '+' : ''}${forecast.percentageChange}%`.padEnd(12);
         const confidence = forecast.confidenceLevel ? `${forecast.confidenceLevel}%`.padEnd(11) : 'N/A'.padEnd(11);
+        const keyFactor = extractKeyFactor(forecast).padEnd(20);
         
-        lines.push(`│ ${horizon} │ ${current} │ ${forecastPrice} │ ${change} │ ${confidence} │`);
+        lines.push(`│ ${horizon} │ ${current} │ ${forecastPrice} │ ${change} │ ${confidence} │ ${keyFactor} │`);
       });
       
-      lines.push('└─────────────┴─────────────┴─────────────┴──────────────┴─────────────┘');
+      lines.push('└─────────────┴─────────────┴─────────────┴──────────────┴─────────────┴──────────────────────┘');
       lines.push('');
     }
     
