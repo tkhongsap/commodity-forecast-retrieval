@@ -425,9 +425,12 @@ export class YahooFinanceService {
         }
       }
 
-      // Validate timestamp data
-      if (!result.timestamp || result.timestamp.length === 0) {
-        validation.errors.push('Missing or empty timestamp data');
+      // Validate timestamp data - handle both historical (array) and current quote (single) formats
+      const hasHistoricalTimestamps = result.timestamp && Array.isArray(result.timestamp) && result.timestamp.length > 0;
+      const hasCurrentQuoteTimestamp = result.meta && result.meta.regularMarketTime;
+      
+      if (!hasHistoricalTimestamps && !hasCurrentQuoteTimestamp) {
+        validation.errors.push('Missing timestamp data (neither historical array nor current quote timestamp found)');
         validation.isValid = false;
       }
 
@@ -435,9 +438,10 @@ export class YahooFinanceService {
       if (!result.indicators || !result.indicators.quote || result.indicators.quote.length === 0) {
         validation.errors.push('Missing quote indicators data');
         validation.isValid = false;
-      } else {
+      } else if (hasHistoricalTimestamps) {
+        // Only perform array length validation for historical data
         const quote = result.indicators.quote[0];
-        const timestampLength = result.timestamp.length;
+        const timestampLength = result.timestamp!.length;
 
         // Check data arrays lengths
         if (quote && quote.close && quote.close.length !== timestampLength) {
