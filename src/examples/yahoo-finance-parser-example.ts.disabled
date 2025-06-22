@@ -19,29 +19,22 @@ import {
   DEFAULT_SYMBOL_MAPPINGS
 } from '../utils/yahoo-finance-parser';
 
-import {
-  YahooFinanceCommodityService,
-  createYahooFinanceCommodityService,
-  fetchCommodityData,
-  fetchMultipleCommodityData
-} from '../services/yahoo-finance-commodity-service';
-
 import { getYahooFinanceService } from '../services/yahoo-finance-service';
 import { CommodityData, ValidationResult } from '../types/commodity';
 
 /**
- * Example 1: Basic parser usage with convenience functions
+ * Example 1: Basic parser usage with Yahoo Finance service
  */
 async function basicParserUsage() {
   console.log('\n=== Example 1: Basic Parser Usage ===');
   
   try {
-    // Fetch commodity data directly using convenience function
-    const commodityData = await fetchCommodityData('CL=F', {
-      validateData: true,
-      strictValidation: false,
-      includeExtendedMetadata: true
-    });
+    // Get Yahoo Finance service and fetch price data
+    const service = getYahooFinanceService();
+    const priceData = await service.getQuoteData('CL=F');
+    
+    // Convert to commodity data using parser
+    const commodityData = parseYahooFinancePriceDataToCommodityData(priceData);
 
     console.log('Successfully fetched commodity data:');
     console.log(`- Symbol: ${commodityData.symbol}`);
@@ -64,25 +57,15 @@ async function multipleCommoditiesUsage() {
   
   try {
     const symbols = ['CL=F', 'GC=F', 'NG=F', 'SI=F'];
-    const result = await fetchMultipleCommodityData(symbols, {
-      validateData: true,
-      useCache: true,
-      maxDataAge: 30 * 60 * 1000 // 30 minutes
+    const service = getYahooFinanceService();
+    const results = await service.getMultiplePrices(symbols);
+
+    console.log(`Successfully fetched ${results.size}/${symbols.length} commodities`);
+    console.log(`Success rate: ${(results.size / symbols.length * 100).toFixed(1)}%`);
+
+    results.forEach((price, symbol) => {
+      console.log(`- ${symbol}: $${price}`);
     });
-
-    console.log(`Successfully fetched ${result.success.length}/${symbols.length} commodities`);
-    console.log(`Success rate: ${result.successRate.toFixed(1)}%`);
-
-    result.success.forEach(commodity => {
-      console.log(`- ${commodity.name} (${commodity.symbol}): ${commodity.currency} ${commodity.currentPrice}`);
-    });
-
-    if (result.failures.length > 0) {
-      console.log('\nFailures:');
-      result.failures.forEach(failure => {
-        console.log(`- ${failure.symbol}: ${failure.error.message} (Retryable: ${failure.retryable})`);
-      });
-    }
 
   } catch (error) {
     console.error('Error fetching multiple commodities:', error);

@@ -35,7 +35,7 @@ import {
   RecoveryStrategy,
   createErrorContext,
   ErrorContext
-} from './error-handler';
+} from './error-utils';
 import { VALIDATION_RULES, COMMODITY_SYMBOLS } from '../config/yahoo-finance';
 
 /**
@@ -636,8 +636,14 @@ export class YahooFinanceResponseValidator {
       // Skip null values
       if (o === null || h === null || l === null || c === null) continue;
 
+      // Type assertion: after the null check, we know these are numbers
+      const oVal = o as number;
+      const hVal = h as number;
+      const lVal = l as number;
+      const cVal = c as number;
+
       // High should be >= all other values
-      if (h < o || h < l || h < c) {
+      if (hVal < oVal || hVal < lVal || hVal < cVal) {
         result.warnings.push({
           severity: ValidationSeverity.WARNING,
           code: 'INVALID_OHLC_RELATIONSHIP',
@@ -648,7 +654,7 @@ export class YahooFinanceResponseValidator {
       }
 
       // Low should be <= all other values
-      if (l > o || l > h || l > c) {
+      if (lVal > oVal || lVal > hVal || lVal > cVal) {
         result.warnings.push({
           severity: ValidationSeverity.WARNING,
           code: 'INVALID_OHLC_RELATIONSHIP',
@@ -925,7 +931,7 @@ export class DataSanitizer {
     const sanitized = { ...chartData };
 
     if (sanitized.result && Array.isArray(sanitized.result)) {
-      sanitized.result = sanitized.result.map(result => this.sanitizeChartResult(result));
+      sanitized.result = sanitized.result.map((result: any) => this.sanitizeChartResult(result));
     }
 
     return sanitized;
@@ -1006,11 +1012,11 @@ export class DataSanitizer {
     const sanitized = { ...indicators };
 
     if (sanitized.quote && Array.isArray(sanitized.quote)) {
-      sanitized.quote = sanitized.quote.map(quote => this.sanitizeQuoteData(quote));
+      sanitized.quote = sanitized.quote.map((quote: any) => this.sanitizeQuoteData(quote));
     }
 
     if (sanitized.adjclose && Array.isArray(sanitized.adjclose)) {
-      sanitized.adjclose = sanitized.adjclose.map(adjClose => this.sanitizeAdjCloseData(adjClose));
+      sanitized.adjclose = sanitized.adjclose.map((adjClose: any) => this.sanitizeAdjCloseData(adjClose));
     }
 
     return sanitized;
@@ -1094,6 +1100,7 @@ export function validateYahooFinanceResponse(
       category: ErrorCategory.DATA_VALIDATION,
       severity: ErrorSeverity.HIGH,
       retryable: false,
+      strategy: RecoveryStrategy.ALERT,
       recoveryStrategy: RecoveryStrategy.ALERT,
       context: errorContext,
       suggestedActions: validationResult.suggestedFixes
