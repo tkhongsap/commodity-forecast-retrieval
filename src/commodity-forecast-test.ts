@@ -16,6 +16,8 @@ import {
   displayForecastSummaryInConsole,
   trackDataRetrieval
 } from './utils/formatter';
+import { getYahooFinanceService } from './services/yahoo-finance-service';
+import { YahooFinanceServiceException } from './services/yahoo-finance-service';
 
 // Load environment variables
 config();
@@ -105,20 +107,73 @@ async function performWebSearch(
   throw lastError!;
 }
 
-// Function to fetch current crude oil (CL=F) price via web search
+// Function to fetch current crude oil (CL=F) price with Yahoo Finance as primary source
 async function fetchCurrentCrudeOilPrice(): Promise<WebSearchResult> {
   try {
     console.log('\n=== Fetching Current Crude Oil Price ===');
     
+    // Try Yahoo Finance first
+    try {
+      console.log('Attempting to fetch from Yahoo Finance (primary source)...');
+      
+      const yahooFinanceService = getYahooFinanceService();
+      const quoteData = await yahooFinanceService.getQuoteData('CL=F', {
+        validatePrice: true,
+        useCache: true
+      });
+      
+      // Track successful Yahoo Finance retrieval
+      trackDataRetrieval('Yahoo Finance API', true, `Price: $${quoteData.currentPrice}`);
+      
+      // Format Yahoo Finance data as WebSearchResult for compatibility
+      const yahooResult: WebSearchResult = {
+        content: `Current WTI Crude Oil (CL=F) price: $${quoteData.currentPrice} USD per barrel
+Last updated: ${new Date(quoteData.lastUpdated).toLocaleString()}
+Exchange: ${quoteData.exchange}
+Day Range: $${quoteData.dayLow} - $${quoteData.dayHigh}
+Previous Close: $${quoteData.previousClose}
+Change: ${quoteData.priceChange > 0 ? '+' : ''}${quoteData.priceChange.toFixed(2)} (${quoteData.percentChange.toFixed(2)}%)
+Volume: ${quoteData.volume.toLocaleString()}
+Source: Yahoo Finance`,
+        timestamp: new Date().toISOString(),
+        success: true,
+        sources: [{
+          name: 'Yahoo Finance',
+          date: quoteData.lastUpdated,
+          reliability: 'high'
+        }]
+      };
+      
+      console.log('✅ Yahoo Finance data fetched successfully');
+      console.log(`Current price: $${quoteData.currentPrice} USD per barrel`);
+      console.log(`Data source: Yahoo Finance (primary)`);
+      
+      return yahooResult;
+      
+    } catch (yahooError) {
+      // Log Yahoo Finance error but continue to fallback
+      console.warn('⚠️ Yahoo Finance API failed, falling back to OpenAI web search');
+      console.warn('Error:', yahooError instanceof Error ? yahooError.message : yahooError);
+      
+      // Track Yahoo Finance failure
+      trackDataRetrieval('Yahoo Finance API', false, yahooError instanceof Error ? yahooError.message : 'Unknown error');
+    }
+    
+    // Fallback to OpenAI web search
+    console.log('Using OpenAI web search as fallback data source...');
+    
     const query = `What is the current price of crude oil WTI (CL=F) today? Please provide the latest price in USD per barrel with the source and timestamp.`;
     
-    console.log('Fetching crude oil price data...');
+    console.log('Fetching crude oil price data via web search...');
     
     const result = await performWebSearch(query, {
       maxRetries: 3,
       timeout: 25000,
       model: "gpt-4o-search-preview"
     });
+    
+    // Track successful OpenAI fallback
+    trackDataRetrieval('OpenAI Web Search (Fallback)', true, 'Used as fallback after Yahoo Finance failure');
     
     const searchResult: WebSearchResult = {
       content: result,
@@ -127,13 +182,17 @@ async function fetchCurrentCrudeOilPrice(): Promise<WebSearchResult> {
       sources: [] // Will be populated by parser
     };
     
-    console.log('✅ Crude oil price data fetched successfully');
+    console.log('✅ Crude oil price data fetched successfully via OpenAI');
     console.log(`Response length: ${result.length} characters`);
+    console.log(`Data source: OpenAI Web Search (fallback)`);
     
     return searchResult;
     
   } catch (error) {
-    console.error('❌ Failed to fetch crude oil price:', error instanceof Error ? error.message : error);
+    console.error('❌ Failed to fetch crude oil price from all sources:', error instanceof Error ? error.message : error);
+    
+    // Track complete failure
+    trackDataRetrieval('All Data Sources', false, 'Both Yahoo Finance and OpenAI failed');
     
     return {
       content: '',
@@ -147,6 +206,11 @@ async function fetchCurrentCrudeOilPrice(): Promise<WebSearchResult> {
 // Parser to extract price data from web search results
 function parsePriceFromSearchResult(searchResult: WebSearchResult): ParsedPriceData {
   const content = searchResult.content.toLowerCase();
+  
+  // Check if this is Yahoo Finance formatted data
+  const isYahooFinance = content.includes('yahoo finance') || 
+                        (searchResult.sources && searchResult.sources.length > 0 && 
+                         searchResult.sources[0]?.name === 'Yahoo Finance');
   
   // Regular expressions to match different price formats
   const pricePatterns = [
@@ -183,6 +247,9 @@ function parsePriceFromSearchResult(searchResult: WebSearchResult): ParsedPriceD
         if (content.includes('current') || content.includes('today')) confidence += 0.2;
         if (content.includes('$') || content.includes('usd')) confidence += 0.1;
         
+        // Boost confidence for Yahoo Finance data
+        if (isYahooFinance) confidence += 0.2;
+        
         break;
       }
     }
@@ -190,19 +257,24 @@ function parsePriceFromSearchResult(searchResult: WebSearchResult): ParsedPriceD
   
   // Extract source information from content
   let sourceInfo = 'Web Search Result';
-  const sourcePatterns = [
-    /source[:\s]+([^.\n]+)/gi,
-    /according to ([^,.\n]+)/gi,
-    /reported by ([^,.\n]+)/gi,
-    /from ([^,.\n]+)/gi
-  ];
   
-  for (const pattern of sourcePatterns) {
-    const match = content.match(pattern);
-    if (match && match[1] && typeof match[1] === 'string') {
-      sourceInfo = match[1].trim();
-      confidence += 0.1;
-      break;
+  if (isYahooFinance) {
+    sourceInfo = 'Yahoo Finance';
+  } else {
+    const sourcePatterns = [
+      /source[:\s]+([^.\n]+)/gi,
+      /according to ([^,.\n]+)/gi,
+      /reported by ([^,.\n]+)/gi,
+      /from ([^,.\n]+)/gi
+    ];
+    
+    for (const pattern of sourcePatterns) {
+      const match = content.match(pattern);
+      if (match && match[1] && typeof match[1] === 'string') {
+        sourceInfo = match[1].trim();
+        confidence += 0.1;
+        break;
+      }
     }
   }
   
@@ -490,14 +562,19 @@ function generateForecastQuery(horizon: string, currentPrice: number): string {
   
   return `Based on current crude oil WTI (CL=F) price of $${currentPrice} per barrel, what is the forecast for crude oil prices in ${horizonConfig.months} months (around ${futureDate.toLocaleDateString()})? 
 
-Please provide:
+Please provide your response in this format:
+
+${horizonConfig.months}-MONTH FORECAST PRICE: $[specific number] per barrel
+
+Additional details:
 1. Expected price range in USD per barrel
 2. Key factors that will influence the price over this ${horizonConfig.months}-month period
-3. Confidence level of the forecast
+3. Confidence level of the forecast (as percentage)
 4. Market sentiment and trends
 5. Major events, seasonal factors, or developments that could impact prices
 6. Comparison to current price (percentage change expected)
 
+Please start with the specific forecast price in the format shown above.
 Please cite reliable sources such as EIA, IEA, major financial institutions, energy analysts, or commodities research firms.`;
 }
 
@@ -558,12 +635,21 @@ function parseForecastPrice(content: string, horizon: string): number | null {
   
   // Enhanced patterns with more specific targeting
   const pricePatterns = [
+    // NEW: Exact format pattern matching our request (with markdown support)
+    new RegExp(`\\*?\\*?${horizonMonths}-month\\s+forecast\\s+price:?\\*?\\*?\\s*\\$?(\\d+\\.?\\d*)`, 'gi'),
+    
+    // Pattern for "forecast price: $XX" anywhere in text
+    /forecast\s+price:?\s*\$?(\d+\.?\d*)\s*per\s*barrel/gi,
+    
     // Horizon-specific patterns: "in 3 months: $75", "3-month forecast: $75"
     new RegExp(`(?:in\\s+)?${horizonMonths}\\s*months?[\\s:]*(?:forecast|outlook|target|expected)?[\\s:]*\\$?(\\d+\\.?\\d*)`, 'gi'),
     new RegExp(`${horizonMonths}[\\s-]*month[\\s-]*(?:forecast|outlook|target|expected)[\\s:]*\\$?(\\d+\\.?\\d*)`, 'gi'),
     
     // Range patterns: "$70-80", "$70 to $80", "$70-$80" (take midpoint)
     /(?:forecast|expected|target|outlook)[\s:]*\$?(\d+\.?\d*)\s*(?:to|-|–)\s*\$?(\d+\.?\d*)/gi,
+    
+    // Pattern for "approximately $XX per barrel"
+    /approximately\s*\$?(\d+\.?\d*)\s*per\s*barrel/gi,
     
     // Context-specific patterns
     /(?:price|crude|oil|wti)\s+(?:forecast|expected|target|outlook)[\s:]*\$?(\d+\.?\d*)/gi,
@@ -786,6 +872,7 @@ async function generateMultiHorizonForecast(commodityData: CommodityData): Promi
         console.warn(`⚠️ Could not create forecast data for ${horizonConfig.key}`);
       }
       
+      
       // Add delay between requests to be respectful to the API
       await new Promise(resolve => setTimeout(resolve, 2000));
       
@@ -804,15 +891,20 @@ async function generateMultiHorizonForecast(commodityData: CommodityData): Promi
 
 // Validation function to detect suspicious forecast patterns
 function validateForecastDiversity(forecasts: ForecastData[], _currentPrice: number): ForecastData[] {
+  console.log('\n🔍 Validating forecast diversity...');
+  console.log(`   Received ${forecasts.length} forecasts to validate`);
+  
   if (forecasts.length < 2) {
+    console.log('   ✅ Not enough data to validate diversity, returning as-is');
     return forecasts; // Not enough data to validate diversity
   }
-  
-  console.log('\n🔍 Validating forecast diversity...');
   
   // Check for identical or suspiciously similar forecasts
   const prices = forecasts.map(f => f.forecastPrice);
   const uniquePrices = [...new Set(prices)];
+  
+  console.log(`   Forecast prices: ${prices.map(p => `$${p}`).join(', ')}`);
+  console.log(`   Unique prices: ${uniquePrices.length}`);
   
   if (uniquePrices.length === 1) {
     console.warn('⚠️ WARNING: All forecasts have identical prices - this is suspicious!');
