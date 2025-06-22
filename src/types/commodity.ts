@@ -10,7 +10,7 @@ export interface SourceInfo {
 export interface CommodityData {
   symbol: string;
   name: string;
-  type: 'commodity';
+  type: 'commodity' | 'futures_contract';
   unit: string;
   currentPrice: number;
   currency: string;
@@ -32,6 +32,81 @@ export interface ForecastData {
   sources: SourceInfo[];
   methodology?: string;
   keyFactors?: string[];
+}
+
+// Futures contract data extending base commodity data
+export interface FuturesContract extends CommodityData {
+  type: 'futures_contract';
+  contractDetails: {
+    expirationDate: string;
+    deliveryMonth: string;
+    contractYear: number;
+    daysToExpiration: number;
+    contractSize: number;
+    tickValue: number;
+    settlementType: 'physical' | 'cash';
+  };
+  underlyingAsset: {
+    symbol: string;
+    name: string;
+    category: string;
+  };
+  priceMetrics: {
+    basis: number; // Difference from spot price
+    openInterest?: number;
+    volume?: number;
+    impliedVolatility?: number;
+  };
+  // Add missing properties for compatibility
+  volume?: number; // Top-level volume access
+}
+
+// Futures curve for term structure analysis
+export interface FuturesCurve {
+  underlyingSymbol: string;
+  curveDate: string;
+  contracts: Array<{
+    symbol: string;
+    maturity: string;
+    price: number;
+    volume?: number;
+    openInterest?: number;
+    daysToExpiration: number;
+  }>;
+  curveMetrics: {
+    contango: boolean; // True if far month > near month
+    backwardation: boolean; // True if near month > far month
+    averageSpread: number; // Average price difference between contracts
+    steepness: number; // Price change per month
+  };
+  sources: SourceInfo[];
+  lastUpdated: string;
+}
+
+// Risk adjustment data for forecast modifications
+export interface RiskAdjustment {
+  riskType: 'geopolitical' | 'supply_demand' | 'economic' | 'weather' | 'regulatory';
+  adjustmentFactor: number; // Percentage adjustment to apply
+  confidenceImpact: number; // Impact on confidence level (-1 to 1)
+  description: string;
+  methodology: string;
+  validityPeriod: {
+    start: string;
+    end: string;
+  };
+  sources: SourceInfo[];
+}
+
+// Enhanced forecast data with market consensus baseline
+export interface MarketConsensusForcast extends ForecastData {
+  marketConsensusPrice: number; // Price from futures curve
+  riskAdjustedPrice: number; // Final forecast after risk adjustments
+  riskAdjustments: RiskAdjustment[];
+  confidenceInterval: {
+    lower: number;
+    upper: number;
+    confidence: number; // e.g., 95 for 95% confidence interval
+  };
 }
 
 // Complete commodity analysis with all forecasts

@@ -113,6 +113,7 @@ Requires `.env` file with:
 ```
 OPENAI_API_KEY=your_openai_api_key_here
 ```
+**Critical**: API key must have access to `gpt-4o-search-preview` model
 
 ## Market Consensus + Risk Forecasting System
 
@@ -135,74 +136,3 @@ OPENAI_API_KEY=your_openai_api_key_here
 - **Expiration Handling**: Business day rules for contract rollovers
 - **Curve Construction**: Interpolation and extrapolation for missing maturities
 - **Arbitrage Detection**: Validation of price relationships across the curve
-
-## Testing Strategy
-
-### Comprehensive Test Coverage
-The project includes extensive testing for the hybrid forecasting system:
-
-- **Unit Tests**: All utility modules with `.test.ts` files
-- **Integration Tests**: End-to-end hybrid forecasting workflows
-- **Performance Tests**: 75% cost reduction validation benchmarks
-- **Accuracy Tests**: Forecast quality and confidence interval validation
-- **Error Handling Tests**: Failure scenarios and fallback mechanisms
-
-### Test Patterns
-- `src/utils/*.test.ts` - Unit tests for utility modules
-- `src/services/*.test.ts` - Service layer tests with mocked dependencies
-- All tests follow consistent `.test.ts` naming convention
-- Jest configuration supports comprehensive test coverage and mocking
-
-## Important Implementation Details
-
-### Hybrid Forecasting Methodology
-- **Market Consensus Extraction**: Parse futures curves to extract market-implied forward prices
-- **Risk Factor Weighting**: Category-specific weights based on commodity type and time horizon
-- **Confidence Calculation**: Bayesian-inspired confidence interval generation
-- **Time Horizon Scaling**: Risk impact scaling based on forecast duration
-
-### Data Quality Assurance
-- **Multi-Source Validation**: Cross-reference futures prices with spot market data
-- **Temporal Consistency**: Validate price relationships across contract maturities
-- **Volume Analysis**: Use trading volume as quality indicator for contract reliability
-- **Outlier Detection**: Statistical methods to identify and handle anomalous data
-
-### Performance Optimization
-- **Tiered Caching**: Different TTL strategies based on data type and volatility
-- **Batch Processing**: Efficient handling of multiple contract requests
-- **Circuit Breakers**: Automatic fallback when services are degraded
-- **Cost Tracking**: Real-time monitoring of API usage vs. targets
-
-### Yahoo Finance Integration Enhancements
-- **Futures Contract Support**: Comprehensive futures symbol mapping and parsing
-- **Term Structure Analysis**: Advanced curve construction and analysis capabilities
-- **Volume and Open Interest**: Enhanced market depth analysis
-- **Error Recovery**: Sophisticated retry logic with exponential backoff
-
-## File Organization Principles
-
-- `src/types/` - TypeScript interfaces including futures contracts and risk types
-- `src/services/` - Core business logic including forecasting and risk analysis
-- `src/utils/` - Specialized utilities for futures mapping, risk analysis, and data processing
-- `src/config/` - Configuration including futures market rules and risk parameters
-- `src/examples/` - Usage examples and demonstrations
-- `output/` - Generated forecast reports with market consensus vs. risk-adjusted analysis
-- `tasks/` - PRD documentation for market consensus and risk forecasting features
-
-## Common Patterns
-
-### Service Factory Pattern
-- `getYahooFinanceService()` - Singleton access for performance
-- `createForecastService()` - Factory for different forecasting configurations
-- `getRiskAnalyzer()` - Centralized risk analysis with configurable parameters
-
-### Configuration Driven Architecture
-- Risk factor categories and limits configurable via `RISK_FACTOR_CONFIG`
-- Futures contract rules defined in `FUTURES_CONFIG`
-- Market hours and trading calendars in `MARKET_HOURS`
-
-### Error Handling Strategy
-- Circuit breaker patterns for external service reliability
-- Graceful degradation to cached data when live sources fail
-- Comprehensive error classification and recovery mechanisms
-- Performance monitoring and alerting for SLA compliance

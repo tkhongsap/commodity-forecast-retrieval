@@ -26,7 +26,10 @@ import {
   HistoricalPricePoint,
   YahooFinanceParams,
   YahooFinanceValidation,
-  MarketStatus
+  MarketStatus,
+  FuturesContractData,
+  FuturesContractOptions,
+  FuturesCurveOptions
 } from '../types/yahoo-finance';
 import { 
   getCommodityConfig,
@@ -34,8 +37,11 @@ import {
   VALIDATION_RULES,
   TIME_CONFIG,
   CACHE_CONFIG,
+  FUTURES_CONFIG,
   CommoditySymbolKey
 } from '../config/yahoo-finance';
+import { FuturesMapper } from '../utils/futures-mapper';
+import { FuturesContract, FuturesCurve } from '../types/commodity';
 
 /**
  * Service error types for specific Yahoo Finance operations
@@ -600,6 +606,274 @@ export class YahooFinanceService {
   }
 
   /**
+   * Get futures contract data for a specific contract symbol
+   * 
+   * @param contractSymbol - Futures contract symbol (e.g., 'CLH25', 'CLM25')
+   * @param options - Futures contract request options
+   * @returns Promise resolving to FuturesContract data
+   */
+  async getFuturesContract(contractSymbol: string, options: FuturesContractOptions = {}): Promise<FuturesContract> {
+    try {
+      this.logger.log(`[YahooFinanceService] Fetching futures contract data for: ${contractSymbol}`);
+
+      // Validate contract symbol format
+      if (!FuturesMapper.isValidContractSymbol(contractSymbol)) {
+        throw new YahooFinanceServiceException(
+          YahooFinanceServiceError.INVALID_SYMBOL,
+          `Invalid futures contract symbol format: ${contractSymbol}`,
+          contractSymbol
+        );
+      }
+
+      // Parse contract details
+      const parsed = FuturesMapper.parseContractSymbol(contractSymbol);
+      const expirationDate = FuturesMapper.calculateExpirationDate(parsed.baseSymbol, parsed.month, parsed.year);
+      const daysToExpiration = FuturesMapper.getDaysToExpiration(contractSymbol);
+
+      // Validate expiration if requested
+      if (options.validateExpiration && options.maxDaysToExpiration) {
+        if (daysToExpiration > options.maxDaysToExpiration) {
+          throw new YahooFinanceServiceException(
+            YahooFinanceServiceError.INVALID_SYMBOL,
+            `Contract expires in ${daysToExpiration} days, exceeds maximum of ${options.maxDaysToExpiration}`,
+            contractSymbol
+          );
+        }
+      }
+
+      // Check cache with futures-specific TTL
+      const cacheKey = `futures_contract:${contractSymbol}:${JSON.stringify(options)}`;
+      const cacheTtl = this.getFuturesCacheTtl(daysToExpiration);
+      const cachedData = this.getFromCache(cacheKey);
+      if (cachedData) {
+        this.logger.log(`[YahooFinanceService] Returning cached futures contract data for ${contractSymbol}`);
+        return cachedData;
+      }
+
+      // Fetch quote data using existing infrastructure
+      const quoteData = await this.getQuoteData(contractSymbol, {
+        validatePrice: options.validateExpiration,
+        useCache: false // Handle caching ourselves
+      });
+
+      // Get contract specifications
+      const contractSpecs = this.getContractSpecs(parsed.baseSymbol);
+
+      // Build futures contract data
+      const futuresContract: FuturesContract = {
+        ...quoteData,
+        type: 'futures_contract',
+        name: `${this.getUnderlyingAssetName(parsed.baseSymbol)} ${parsed.month}${parsed.year}`,
+        unit: 'USD per barrel', // Default unit for crude oil futures
+        contractDetails: {
+          expirationDate: expirationDate.toISOString(),
+          deliveryMonth: parsed.month,
+          contractYear: parsed.year,
+          daysToExpiration,
+          contractSize: contractSpecs.contractSize,
+          tickValue: contractSpecs.tickValue,
+          settlementType: contractSpecs.settlementType
+        },
+        underlyingAsset: {
+          symbol: `${parsed.baseSymbol}=F`,
+          name: this.getUnderlyingAssetName(parsed.baseSymbol),
+          category: this.getAssetCategory(parsed.baseSymbol)
+        },
+        priceMetrics: {
+          basis: 0, // Will be calculated if spot price is available
+          volume: quoteData.volume,
+          openInterest: undefined,
+          impliedVolatility: undefined
+        },
+        sources: [{
+          name: 'Yahoo Finance',
+          url: `https://finance.yahoo.com/quote/${contractSymbol}`,
+          date: new Date().toISOString(),
+          reliability: 'high'
+        }]
+      };
+
+      // Validate the constructed futures contract data
+      if (options.validateExpiration !== false) {
+        const validation = this.validateFuturesContractData(futuresContract);
+        
+        if (!validation.isValid) {
+          throw new YahooFinanceServiceException(
+            YahooFinanceServiceError.VALIDATION_FAILED,
+            `Contract validation failed: ${validation.errors.join(', ')}`,
+            contractSymbol
+          );
+        }
+
+        // Log warnings if any
+        if (validation.warnings.length > 0) {
+          this.logger.warn(`[YahooFinanceService] Contract validation warnings for ${contractSymbol}: ${validation.warnings.join(', ')}`);
+        }
+
+        // Log quality score
+        this.logger.log(`[YahooFinanceService] Contract data quality score for ${contractSymbol}: ${(validation.qualityScore * 100).toFixed(1)}%`);
+      }
+
+      // Cache the result
+      this.setCache(cacheKey, futuresContract, cacheTtl);
+
+      this.logger.log(`[YahooFinanceService] Successfully fetched futures contract data for ${contractSymbol}`);
+      return futuresContract;
+
+    } catch (error) {
+      if (error instanceof YahooFinanceServiceException) {
+        throw error;
+      }
+      
+      this.logger.error(`[YahooFinanceService] Error fetching futures contract ${contractSymbol}:`, error);
+      throw new YahooFinanceServiceException(
+        YahooFinanceServiceError.DATA_PARSING_ERROR,
+        `Failed to fetch futures contract: ${(error as Error).message}`,
+        contractSymbol,
+        undefined,
+        true
+      );
+    }
+  }
+
+  /**
+   * Get futures curve data for multiple contracts
+   * 
+   * @param baseSymbol - Base commodity symbol (e.g., 'CL=F', 'GC=F')
+   * @param options - Futures curve request options
+   * @returns Promise resolving to FuturesCurve data
+   */
+  async getFuturesCurve(baseSymbol: string, options: FuturesCurveOptions = {}): Promise<FuturesCurve> {
+    try {
+      this.logger.log(`[YahooFinanceService] Fetching futures curve for: ${baseSymbol}`);
+
+      // Validate base symbol
+      if (!this.isValidSymbol(baseSymbol)) {
+        throw new YahooFinanceServiceException(
+          YahooFinanceServiceError.INVALID_SYMBOL,
+          `Invalid base symbol format: ${baseSymbol}`,
+          baseSymbol
+        );
+      }
+
+      // Set default options
+      const {
+        contractMonths = FUTURES_CONFIG.QUARTERLY_MONTHS,
+        contractYear = new Date().getFullYear(),
+        maxContracts = 12,
+        validateCurve = true,
+        includeAnalytics = true
+      } = options;
+
+      // Check cache
+      const cacheKey = `futures_curve:${baseSymbol}:${JSON.stringify(options)}`;
+      const cachedData = this.getFromCache(cacheKey);
+      if (cachedData) {
+        this.logger.log(`[YahooFinanceService] Returning cached futures curve for ${baseSymbol}`);
+        return cachedData;
+      }
+
+      // Generate contract symbols for requested months
+      const contractSymbols: string[] = [];
+      const baseCode = baseSymbol.replace('=F', '');
+      
+      for (let yearOffset = 0; yearOffset < 3; yearOffset++) {
+        const year = contractYear + yearOffset;
+        for (const month of contractMonths) {
+          try {
+            const contractSymbol = FuturesMapper.buildContractSymbol(baseCode, month, year);
+            contractSymbols.push(contractSymbol);
+            
+            if (contractSymbols.length >= maxContracts) break;
+          } catch (error) {
+            this.logger.warn(`[YahooFinanceService] Failed to build contract symbol for ${baseCode}${month}${year}:`, error);
+          }
+        }
+        if (contractSymbols.length >= maxContracts) break;
+      }
+
+      // Fetch all contracts in parallel
+      const contractPromises = contractSymbols.map(async (contractSymbol) => {
+        try {
+          const contract = await this.getFuturesContract(contractSymbol, { validateExpiration: false });
+          return {
+            symbol: contractSymbol,
+            maturity: contract.contractDetails.expirationDate,
+            price: contract.currentPrice,
+            volume: contract.volume,
+            openInterest: contract.priceMetrics.openInterest,
+            daysToExpiration: contract.contractDetails.daysToExpiration
+          };
+        } catch (error) {
+          this.logger.warn(`[YahooFinanceService] Failed to fetch contract ${contractSymbol}:`, error);
+          return null;
+        }
+      });
+
+      const contractResults = await Promise.allSettled(contractPromises);
+      const contracts = contractResults
+        .filter(result => result.status === 'fulfilled' && result.value !== null)
+        .map(result => (result as PromiseFulfilledResult<any>).value)
+        .sort((a, b) => new Date(a.maturity).getTime() - new Date(b.maturity).getTime());
+
+      if (contracts.length === 0) {
+        throw new YahooFinanceServiceException(
+          YahooFinanceServiceError.NO_DATA_AVAILABLE,
+          `No futures contract data available for ${baseSymbol}`,
+          baseSymbol
+        );
+      }
+
+      // Calculate curve metrics
+      const curveMetrics = includeAnalytics ? this.calculateCurveMetrics(contracts) : {
+        contango: false,
+        backwardation: false,
+        averageSpread: 0,
+        steepness: 0
+      };
+
+      // Validate curve consistency if requested
+      if (validateCurve) {
+        this.validateFuturesCurve(contracts, baseSymbol);
+      }
+
+      const futuresCurve: FuturesCurve = {
+        underlyingSymbol: baseSymbol,
+        curveDate: new Date().toISOString(),
+        contracts,
+        curveMetrics,
+        sources: [{
+          name: 'Yahoo Finance',
+          url: `https://finance.yahoo.com/quote/${baseSymbol}`,
+          date: new Date().toISOString(),
+          reliability: 'high'
+        }],
+        lastUpdated: new Date().toISOString()
+      };
+
+      // Cache the result
+      this.setCache(cacheKey, futuresCurve, FUTURES_CONFIG.CACHE_TTL.CURVE_DATA);
+
+      this.logger.log(`[YahooFinanceService] Successfully fetched futures curve for ${baseSymbol}, ${contracts.length} contracts`);
+      return futuresCurve;
+
+    } catch (error) {
+      if (error instanceof YahooFinanceServiceException) {
+        throw error;
+      }
+      
+      this.logger.error(`[YahooFinanceService] Error fetching futures curve for ${baseSymbol}:`, error);
+      throw new YahooFinanceServiceException(
+        YahooFinanceServiceError.DATA_PARSING_ERROR,
+        `Failed to fetch futures curve: ${(error as Error).message}`,
+        baseSymbol,
+        undefined,
+        true
+      );
+    }
+  }
+
+  /**
    * Clear service cache
    */
   clearCache(): void {
@@ -785,6 +1059,339 @@ export class YahooFinanceService {
       }
     }
     return null;
+  }
+
+  /**
+   * Get appropriate cache TTL based on contract expiration
+   */
+  private getFuturesCacheTtl(daysToExpiration: number): number {
+    if (daysToExpiration <= 30) {
+      return FUTURES_CONFIG.CACHE_TTL.FRONT_MONTH;
+    } else if (daysToExpiration <= 180) {
+      return FUTURES_CONFIG.CACHE_TTL.NEAR_TERM;
+    } else if (daysToExpiration <= 365) {
+      return FUTURES_CONFIG.CACHE_TTL.MEDIUM_TERM;
+    } else {
+      return FUTURES_CONFIG.CACHE_TTL.LONG_TERM;
+    }
+  }
+
+  /**
+   * Get contract specifications for a base symbol
+   */
+  private getContractSpecs(baseSymbol: string): {
+    contractSize: number;
+    tickValue: number;
+    settlementType: 'physical' | 'cash';
+  } {
+    // Default specifications - can be expanded with symbol-specific rules
+    const defaultSpecs = {
+      contractSize: 1000,
+      tickValue: 10.00,
+      settlementType: 'physical' as const
+    };
+
+    // Symbol-specific specifications
+    const specMap: Record<string, typeof defaultSpecs> = {
+      'CL': { contractSize: 1000, tickValue: 10.00, settlementType: 'physical' },
+      'GC': { contractSize: 100, tickValue: 10.00, settlementType: 'physical' },
+      'NG': { contractSize: 10000, tickValue: 10.00, settlementType: 'physical' }
+    };
+
+    return specMap[baseSymbol] || defaultSpecs;
+  }
+
+  /**
+   * Get underlying asset name for base symbol
+   */
+  private getUnderlyingAssetName(baseSymbol: string): string {
+    const nameMap: Record<string, string> = {
+      'CL': 'Crude Oil WTI',
+      'GC': 'Gold',
+      'NG': 'Natural Gas',
+      'SI': 'Silver',
+      'HG': 'Copper'
+    };
+
+    return nameMap[baseSymbol] || `${baseSymbol} Commodity`;
+  }
+
+  /**
+   * Get asset category for base symbol
+   */
+  private getAssetCategory(baseSymbol: string): string {
+    const categoryMap: Record<string, string> = {
+      'CL': 'energy',
+      'NG': 'energy',
+      'GC': 'metals',
+      'SI': 'metals',
+      'HG': 'metals'
+    };
+
+    return categoryMap[baseSymbol] || 'commodity';
+  }
+
+  /**
+   * Calculate futures curve metrics
+   */
+  private calculateCurveMetrics(contracts: Array<{
+    symbol: string;
+    maturity: string;
+    price: number;
+    volume?: number;
+    openInterest?: number;
+    daysToExpiration: number;
+  }>): {
+    contango: boolean;
+    backwardation: boolean;
+    averageSpread: number;
+    steepness: number;
+  } {
+    if (contracts.length < 2) {
+      return { contango: false, backwardation: false, averageSpread: 0, steepness: 0 };
+    }
+
+    // Sort by expiration
+    const sorted = [...contracts].sort((a, b) => a.daysToExpiration - b.daysToExpiration);
+    
+    // Calculate price differences
+    const spreads: number[] = [];
+    for (let i = 1; i < sorted.length; i++) {
+      spreads.push(sorted[i].price - sorted[i-1].price);
+    }
+
+    const averageSpread = spreads.reduce((sum, spread) => sum + spread, 0) / spreads.length;
+    const steepness = (sorted[sorted.length - 1].price - sorted[0].price) / 
+                     (sorted[sorted.length - 1].daysToExpiration - sorted[0].daysToExpiration) * 365;
+
+    // Determine market structure
+    const contango = averageSpread > 0; // Far months more expensive
+    const backwardation = averageSpread < 0; // Near months more expensive
+
+    return {
+      contango,
+      backwardation,
+      averageSpread,
+      steepness
+    };
+  }
+
+  /**
+   * Validate futures curve consistency
+   */
+  private validateFuturesCurve(contracts: Array<{
+    symbol: string;
+    maturity: string;
+    price: number;
+    volume?: number;
+    openInterest?: number;
+    daysToExpiration: number;
+  }>, baseSymbol: string): void {
+    if (contracts.length < FUTURES_CONFIG.VALIDATION.MIN_CURVE_POINTS) {
+      throw new YahooFinanceServiceException(
+        YahooFinanceServiceError.VALIDATION_FAILED,
+        `Insufficient curve data: ${contracts.length} contracts, minimum ${FUTURES_CONFIG.VALIDATION.MIN_CURVE_POINTS} required`,
+        baseSymbol
+      );
+    }
+
+    // Check for extreme price spreads
+    const prices = contracts.map(c => c.price);
+    const minPrice = Math.min(...prices);
+    const maxPrice = Math.max(...prices);
+    const maxSpread = (maxPrice - minPrice) / minPrice;
+
+    if (maxSpread > FUTURES_CONFIG.VALIDATION.MAX_CONTRACT_SPREAD) {
+      this.logger.warn(`[YahooFinanceService] Large price spread detected in futures curve for ${baseSymbol}: ${(maxSpread * 100).toFixed(1)}%`);
+    }
+
+    // Check expiration dates are in the future
+    const now = new Date();
+    const expiredContracts = contracts.filter(c => new Date(c.maturity) <= now);
+    if (expiredContracts.length > 0) {
+      this.logger.warn(`[YahooFinanceService] ${expiredContracts.length} expired contracts found in curve for ${baseSymbol}`);
+    }
+
+    // Validate liquidity (volume and open interest)
+    this.validateFuturesLiquidity(contracts, baseSymbol);
+
+    // Validate price coherence across the curve
+    this.validatePriceCoherence(contracts, baseSymbol);
+  }
+
+  /**
+   * Validate futures contract liquidity
+   */
+  private validateFuturesLiquidity(contracts: Array<{
+    symbol: string;
+    maturity: string;
+    price: number;
+    volume?: number;
+    openInterest?: number;
+    daysToExpiration: number;
+  }>, baseSymbol: string): void {
+    const lowLiquidityContracts: string[] = [];
+    const zeroVolumeContracts: string[] = [];
+
+    for (const contract of contracts) {
+      // Check for zero or very low volume
+      if (contract.volume !== undefined) {
+        if (contract.volume === 0) {
+          zeroVolumeContracts.push(contract.symbol);
+        } else if (contract.volume < VALIDATION_RULES.VOLUME_THRESHOLDS.MIN_DAILY_VOLUME) {
+          lowLiquidityContracts.push(contract.symbol);
+        }
+      }
+
+      // Check for near-expiry contracts with low liquidity
+      if (contract.daysToExpiration < FUTURES_CONFIG.VALIDATION.WARNING_DAYS_TO_EXPIRY) {
+        if (contract.volume && contract.volume < VALIDATION_RULES.VOLUME_THRESHOLDS.MIN_DAILY_VOLUME * 2) {
+          this.logger.warn(`[YahooFinanceService] Near-expiry contract ${contract.symbol} has low liquidity: ${contract.volume} volume`);
+        }
+      }
+    }
+
+    // Log liquidity warnings
+    if (zeroVolumeContracts.length > 0) {
+      this.logger.warn(`[YahooFinanceService] Zero volume contracts for ${baseSymbol}: ${zeroVolumeContracts.join(', ')}`);
+    }
+
+    if (lowLiquidityContracts.length > 0) {
+      this.logger.warn(`[YahooFinanceService] Low liquidity contracts for ${baseSymbol}: ${lowLiquidityContracts.join(', ')}`);
+    }
+
+    // Fail validation if too many contracts have liquidity issues
+    const totalLiquidityIssues = zeroVolumeContracts.length + lowLiquidityContracts.length;
+    const liquidityIssueRatio = totalLiquidityIssues / contracts.length;
+    
+    if (liquidityIssueRatio > 0.5) { // More than 50% have liquidity issues
+      throw new YahooFinanceServiceException(
+        YahooFinanceServiceError.VALIDATION_FAILED,
+        `Excessive liquidity issues in futures curve for ${baseSymbol}: ${totalLiquidityIssues}/${contracts.length} contracts affected`,
+        baseSymbol
+      );
+    }
+  }
+
+  /**
+   * Validate price coherence across futures curve
+   */
+  private validatePriceCoherence(contracts: Array<{
+    symbol: string;
+    maturity: string;
+    price: number;
+    volume?: number;
+    openInterest?: number;
+    daysToExpiration: number;
+  }>, baseSymbol: string): void {
+    if (contracts.length < 2) return;
+
+    // Sort by expiration
+    const sorted = [...contracts].sort((a, b) => a.daysToExpiration - b.daysToExpiration);
+    
+    // Check for anomalous price jumps between consecutive contracts
+    for (let i = 1; i < sorted.length; i++) {
+      const prevContract = sorted[i - 1];
+      const currentContract = sorted[i];
+      
+      const priceChange = Math.abs(currentContract.price - prevContract.price);
+      const percentChange = priceChange / prevContract.price;
+      
+      // Flag extreme price jumps (more than 10% between consecutive contracts)
+      if (percentChange > 0.10) {
+        this.logger.warn(
+          `[YahooFinanceService] Large price jump detected in ${baseSymbol} curve: ` +
+          `${prevContract.symbol} ($${prevContract.price.toFixed(2)}) to ` +
+          `${currentContract.symbol} ($${currentContract.price.toFixed(2)}) - ` +
+          `${(percentChange * 100).toFixed(1)}% change`
+        );
+      }
+    }
+
+    // Check for unrealistic price patterns
+    const firstPrice = sorted[0].price;
+    const lastPrice = sorted[sorted.length - 1].price;
+    const totalChange = Math.abs(lastPrice - firstPrice) / firstPrice;
+    
+    // Flag if total curve spread is more than 50%
+    if (totalChange > 0.50) {
+      this.logger.warn(
+        `[YahooFinanceService] Extreme price range in ${baseSymbol} futures curve: ` +
+        `${(totalChange * 100).toFixed(1)}% from front to back month`
+      );
+    }
+  }
+
+  /**
+   * Validate individual futures contract data quality
+   */
+  private validateFuturesContractData(contractData: FuturesContract): {
+    isValid: boolean;
+    errors: string[];
+    warnings: string[];
+    qualityScore: number;
+  } {
+    const validation = {
+      isValid: true,
+      errors: [] as string[],
+      warnings: [] as string[],
+      qualityScore: 1.0
+    };
+
+    // Validate required fields
+    if (!contractData.currentPrice || contractData.currentPrice <= 0) {
+      validation.errors.push('Invalid or missing current price');
+      validation.isValid = false;
+    }
+
+    if (!contractData.contractDetails.expirationDate) {
+      validation.errors.push('Missing expiration date');
+      validation.isValid = false;
+    }
+
+    if (contractData.contractDetails.daysToExpiration < 0) {
+      validation.errors.push('Contract has already expired');
+      validation.isValid = false;
+    }
+
+    // Validate price ranges against commodity-specific rules
+    try {
+      this.validatePriceRange(contractData.currentPrice, contractData.symbol);
+    } catch (error) {
+      if (error instanceof YahooFinanceServiceException) {
+        validation.errors.push(error.message);
+        validation.isValid = false;
+      }
+    }
+
+    // Check data freshness
+    const dataAge = Date.now() - new Date(contractData.lastUpdated).getTime();
+    const maxAge = VALIDATION_RULES.DATA_FRESHNESS.MAX_REALTIME_AGE_MINUTES * 60 * 1000;
+    
+    if (dataAge > maxAge) {
+      validation.warnings.push(`Contract data is ${Math.floor(dataAge / 60000)} minutes old`);
+      validation.qualityScore -= 0.1;
+    }
+
+    // Check for near expiry warning
+    if (contractData.contractDetails.daysToExpiration < FUTURES_CONFIG.VALIDATION.WARNING_DAYS_TO_EXPIRY) {
+      validation.warnings.push(`Contract expires in ${contractData.contractDetails.daysToExpiration} days`);
+      validation.qualityScore -= 0.05;
+    }
+
+    // Check volume and liquidity indicators
+    if (contractData.volume === 0) {
+      validation.warnings.push('Zero trading volume detected');
+      validation.qualityScore -= 0.2;
+    } else if (contractData.volume && contractData.volume < VALIDATION_RULES.VOLUME_THRESHOLDS.MIN_DAILY_VOLUME) {
+      validation.warnings.push('Low trading volume detected');
+      validation.qualityScore -= 0.1;
+    }
+
+    // Ensure quality score doesn't go below 0
+    validation.qualityScore = Math.max(0, validation.qualityScore);
+
+    return validation;
   }
 
   /**
