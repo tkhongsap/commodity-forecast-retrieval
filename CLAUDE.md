@@ -22,207 +22,117 @@ This helps me quickly understand the project context and structure.
 
 ## Project Context
 
-This is a Commodity Forecasting System that has evolved from an OpenAI web search demonstration to a professional-grade forecasting platform. The system integrates Yahoo Finance as the primary data source with OpenAI as a strategic fallback, featuring comprehensive service-oriented architecture, caching, validation, and multi-horizon forecasting capabilities.
-
-**Current State**: Recently underwent major Phase 1 refactoring (1,186 → 260 lines in main file) with service extraction. Next phase involves implementing Market Consensus + Risk Adjustment Forecasting using futures curve data to reduce API costs by 75%.
+This is an OpenAI Commodity Forecast API Test project demonstrating advanced forecasting capabilities. The project has evolved from simple web search to a sophisticated **Market Consensus + Risk Adjustment Forecasting System** that achieves **75% API cost reduction** through intelligent data source selection and hybrid forecasting methodologies.
 
 ## Core Architecture
 
-### Service-Oriented Design (Post-Refactoring)
-The system uses a clean service-oriented architecture with dedicated modules:
+### Main Application Flow
+- `src/commodity-forecast-test.ts` - Main entry point orchestrating the hybrid forecasting process
+- Primary data flow: Yahoo Finance → Futures Analysis → Risk Assessment → Hybrid Forecasting → Output
 
-- `src/commodity-forecast-test.ts` - **Main orchestrator** (260 lines, down from 1,186)
-- `src/services/web-search-service.ts` - **OpenAI integration** with retry logic (230 lines)
-- `src/services/price-data-service.ts` - **Yahoo Finance integration & price parsing** (387 lines)  
-- `src/services/forecast-service.ts` - **Multi-horizon forecast generation** (565 lines)
-- `src/services/yahoo-finance-service.ts` - **Core Yahoo Finance API client** (860 lines)
+### Key Architectural Layers
 
-### Data Flow Architecture
-```
-Current Price Request
-├── Yahoo Finance Service (Primary)
-│   ├── HTTP Client → Cache Check → API Call
-│   ├── Price Validation → Confidence Scoring
-│   └── Structured Response
-├── OpenAI Fallback (If Yahoo fails)
-│   ├── Web Search Service → Retry Logic
-│   ├── Price Parsing → Validation
-│   └── Fallback Response
-└── Output → JSON + Human-readable formats
+1. **Data Sources Layer**
+   - `src/services/yahoo-finance-service.ts` - Primary real-time futures and spot price data
+   - `src/utils/yahoo-finance-parser.ts` - Specialized futures contract and term structure parsing
+   - Web search fallback for risk factor analysis
+   - Comprehensive caching and rate limiting (5-minute TTL)
 
-Forecast Generation  
-├── Multi-Horizon Queries (3, 6, 12, 24 months)
-├── Forecast Service → OpenAI Web Search
-├── Price Parsing → Validation → Confidence
-└── Comprehensive Analysis Output
-```
+2. **Forecasting Engine Layer**
+   - `src/services/forecast-service.ts` - Hybrid forecasting engine combining market consensus with risk adjustments
+   - `src/utils/futures-mapper.ts` - Futures curve construction and term structure analysis
+   - `src/utils/risk-analyzer.ts` - Multi-factor risk assessment and adjustment calculation
+   - Market consensus baseline extraction from futures curves
 
-### Key Architectural Principles
-1. **Primary/Fallback Pattern**: Yahoo Finance primary, OpenAI strategic fallback
-2. **Service Isolation**: Each service handles one responsibility 
-3. **Comprehensive Validation**: Multi-layer validation with confidence scoring
-4. **Graceful Degradation**: System continues operating with cached/fallback data
-5. **Professional Logging**: Structured JSON logging with source attribution
+3. **Risk Analysis Layer**
+   - **Risk Categories**: Geopolitical, Supply/Demand, Economic, Weather, Regulatory
+   - **Time Scaling**: Adjustments based on forecast horizon (3-24 months)
+   - **Confidence Intervals**: Statistically-derived uncertainty quantification
+   - **Risk Combination Rules**: Maximum 35% total adjustment with diversification factors
+
+4. **Validation & Quality Layer**
+   - `src/utils/price-validator.ts` - Multi-layer price and forecast validation
+   - `src/utils/data-validator.ts` - Comprehensive data integrity checks
+   - Cross-validation between spot prices and futures curves
+   - Futures contract expiration and arbitrage validation
+
+5. **Caching & Performance Layer**
+   - `src/utils/cache-manager.ts` - Multi-tier caching strategy
+   - **Cache TTL Strategy**: Spot (1min) → Front Month (5min) → Long Term (4hrs)
+   - Performance benchmarking for 75% cost reduction validation
+   - Circuit breaker patterns for API reliability
+
+6. **Configuration & Types Layer**
+   - `src/config/yahoo-finance.ts` - Comprehensive futures market configuration
+   - `src/types/commodity.ts` - Enhanced interfaces for futures contracts and risk assessments
+   - `src/types/yahoo-finance.ts` - Yahoo Finance API data structures
+   - `src/utils/error-utils.ts` - Consolidated error handling utilities
+
+### Hybrid Forecasting Data Flow
+1. **Futures Data Acquisition** → Yahoo Finance Service (futures curves, term structure)
+2. **Market Consensus Baseline** → Extract implied forward prices from futures contracts
+3. **Risk Factor Analysis** → Multi-category risk assessment with confidence scoring
+4. **Risk Adjustment Application** → Time-scaled, weighted risk modifications
+5. **Confidence Interval Calculation** → Statistical uncertainty quantification
+6. **Output Generation** → Structured forecasts with market consensus vs. risk-adjusted prices
 
 ## Development Guidelines
 
-### Core Coding Rules (from `.cursor/rules/coding-rules.mdc`)
-- **Iterate existing patterns** rather than creating new ones
-- **Keep files under 200-300 lines** - refactor when larger (main file was 1,186 → 260)
-- **Check for existing functionality** before duplicating code
-- **Focus only on relevant areas** to the current task
-- **Write thorough tests** for all major functionality  
-- **Never mock data** for dev/prod environments (tests only)
-- **Prefer simple solutions** and maintain clean organization
-
-### Service Architecture Principles
-- **One responsibility per service** - each module handles specific functionality
-- **Factory pattern usage** - `createServiceName()` functions for instantiation
-- **Dependency injection** - services receive dependencies in constructor
-- **Interface-driven** - comprehensive TypeScript interfaces in `src/types/`
-- **Error boundary patterns** - each service handles its own error cases
+### Core Coding Rules (from `ai-dev-tasks/coding-rules.md`)
+- Iterate on existing code patterns rather than creating new ones
+- Keep files under 200-300 lines, refactor when larger
+- Avoid duplication - check for existing similar functionality first
+- Focus only on areas relevant to the task
+- Write thorough tests for all major functionality
+- Never mock data for dev/prod environments (tests only)
+- Prefer simple solutions and maintain clean organization
 
 ### TypeScript Configuration
-- **Relaxed strict mode** for development efficiency (exactOptionalPropertyTypes: false)
-- **Compilation target** optimized for Node.js compatibility
-- **Path resolution** configured for clean imports
+- Strict mode enabled with comprehensive type safety
+- ts-node configured with relaxed checking for development
+- Optional chaining and null checks required for all data access
+- Interfaces enforce proper typing for futures contracts and risk assessments
 
 ## Key Commands
 
-### Development Commands
-- `npm start` - **Run complete forecast system** (tests + price fetch + forecasts + output)
-- `npm run dev` - **Watch mode** with auto-restart on file changes
-- `npm run build` - **Compile TypeScript** to dist/ directory
-- `npm test` - **Run Jest test suite** for all utilities and services
-- `npm run test:watch` - **Interactive test runner** with file watching
+### Development
+- `npm start` - Run the hybrid commodity forecast system
+- `npm run dev` - Run in watch mode with auto-restart
+- `npm run build` - Build TypeScript files to dist/
+- `npm test` - Run comprehensive Jest test suite
+- `npm run test:watch` - Run tests in watch mode
 
-### Environment Requirements
-Create `.env` file in project root:
-```bash
+### Testing Commands
+All test files follow a consistent `.test.ts` naming pattern:
+- `src/services/yahoo-finance-service.test.ts` - Service layer tests
+- `src/utils/*.test.ts` - Unit tests for utility modules (cache, logger, price-validator, etc.)
+- Jest configuration supports comprehensive test coverage
+
+### Environment Setup
+Requires `.env` file with:
+```
 OPENAI_API_KEY=your_openai_api_key_here
 ```
 **Critical**: API key must have access to `gpt-4o-search-preview` model
 
-## Testing Strategy
+## Market Consensus + Risk Forecasting System
 
-### Test Organization
-- **Utilities**: `src/utils/*.test.ts` - Cache manager, logger, price validator  
-- **Services**: `src/services/*.test.ts` - Yahoo Finance service (comprehensive suite)
-- **Integration**: Built-in connectivity tests run with each forecast execution
-- **Configuration**: Jest with ts-jest preset, configured in package.json
+### Key Features (75% Cost Reduction Achievement)
+- **Hybrid Methodology**: Combines futures market consensus with AI-driven risk analysis
+- **Multi-Horizon Forecasting**: 3, 6, 12, 24-month forecasts with confidence intervals
+- **Risk Factor Integration**: 5 categories of risk with time-scaling and combination rules
+- **Performance Optimization**: Intelligent caching reduces API calls by 75%
+- **Futures Curve Analysis**: Term structure analysis with contango/backwardation detection
 
-### Testing Patterns
-- **External API mocking** for Yahoo Finance and OpenAI integration
-- **Edge case coverage** including network failures, invalid responses, parsing errors
-- **Real-time validation** during each `npm start` execution
+### Risk Factor Categories
+1. **Geopolitical**: Max 15% impact (sanctions, conflicts, political instability)
+2. **Supply/Demand**: Max 25% impact (production cuts, demand spikes, inventory levels)
+3. **Economic**: Max 20% impact (interest rates, inflation, currency fluctuations)
+4. **Weather**: Max 30% impact (extreme weather, natural disasters, climate change)
+5. **Regulatory**: Max 18% impact (policy changes, environmental regulations)
 
-## Implementation Patterns
-
-### Primary/Fallback Pattern
-- **Yahoo Finance Primary**: Real-time quote data with caching (5-min TTL)
-- **OpenAI Strategic Fallback**: Web search when Yahoo Finance fails
-- **Automatic Switching**: Seamless fallback with retry logic and exponential backoff
-- **Data Validation**: Both sources validated with commodity-specific rules ($10-$200/barrel)
-
-### Service Communication Patterns
-```typescript
-// Factory pattern for service creation
-const webSearchService = createWebSearchService(openAIClient);
-const priceDataService = createPriceDataService(webSearchService);
-const forecastService = createForecastService(webSearchService);
-
-// Dependency injection
-class PriceDataService {
-  constructor(private webSearchService: WebSearchService) {}
-}
-```
-
-### Error Handling Architecture
-- **Multi-layer validation** with confidence scoring at each step
-- **Graceful degradation** using cached data when all sources fail  
-- **Context preservation** through structured error objects
-- **Source attribution** for all data points and error conditions
-
-## Project Organization
-
-### Directory Structure
-- `src/services/` - **Service layer** (web-search, price-data, forecast, yahoo-finance)
-- `src/utils/` - **Utility modules** (cache, logger, validator, formatter, http-client)
-- `src/types/` - **TypeScript interfaces** (commodity, yahoo-finance data structures)
-- `src/config/` - **Configuration** (Yahoo Finance settings, validation rules)
-- `output/` - **Generated reports** (timestamped JSON and human-readable files)
-- `tasks/` - **Project planning** (PRDs, task lists, implementation tracking)
-
-### Task Management System
-
-**Current Implementation Status**:
-- ✅ **Phase 1 Complete**: Codebase refactoring and service extraction  
-- ✅ **Phase 2 Complete**: Market Consensus + Risk Adjustment Forecasting (75% cost reduction achieved)
-- 📋 **Documentation**: `tasks/prd-market-consensus-risk-forecasting.md` 
-- 📝 **Task Tracking**: `tasks/tasks-prd-market-consensus-risk-forecasting.md` (all tasks marked complete)
-
-**Task Processing Used**:
-- ✅ Followed `ai-dev-tasks/process-tasks-agents.md` for sub-agent delegation
-- ✅ Used parallel research + sequential implementation approach
-- ✅ All 32 tasks completed with checkbox format after comprehensive testing
-
-### Implementation Highlights
-
-**System Architecture**:
-- **No Historical Data**: Uses only forward-looking futures contracts for market consensus
-- **Risk Categories**: Geopolitical, Supply/Demand, Economic, Weather, Regulatory
-- **Time Scaling**: Risk impact increases with forecast horizon uncertainty
-- **Cache Strategy**: Multi-tier TTL (1min-4hr) optimized for different contract timeframes
-
-**Data Types Added**:
-- `MarketConsensusForcast` - Futures-based baseline forecasts
-- `RiskAdjustment` - AI risk factors with percentage impact calculations
-- `FuturesCurve` - Yahoo Finance futures contract collection
-- `YahooFinanceFuturesResponse` - API response types for futures data
-
-**Testing Coverage**:
-- Integration tests validating complete forecast pipeline
-- Performance benchmarks confirming 75% cost reduction
-- Error handling validation for API failures and fallback scenarios  
-- Accuracy validation for forecast confidence intervals
-
-### Factory Patterns
-```typescript
-// Singleton-style getters for shared instances
-const logger = getLogger();
-const cacheManager = getCacheManager();
-
-// Factory functions for new instances  
-const priceValidator = createPriceValidator(commodityConfig);
-const yahooService = getYahooFinanceService(); // singleton
-```
-
-## Market Consensus + Risk Forecasting System ✅ COMPLETED
-
-**Objective**: ✅ **ACHIEVED** - Replaced expensive 4-call OpenAI forecasting with futures curve + 1 strategic AI call
-**Impact**: ✅ **75% API cost reduction achieved** (2 calls vs 8) while maintaining forecast quality
-**Implementation**: ✅ **All 32 sub-tasks completed** across 5 phases 
-**Architecture**: ✅ **Fully implemented** - Yahoo Finance futures data + OpenAI risk overlay
-
-### Implemented Features
-- **Hybrid Forecasting Engine** - Market consensus baseline + AI risk adjustments
-- **Futures Contract Mapping** - CLZ23 format with quarterly contract selection
-- **Risk Analysis Module** - 5 risk categories with time-scaled impact assessment
-- **Comprehensive Testing** - Integration, performance, accuracy, and error handling tests
-- **Backwards Compatibility** - Toggle between new hybrid and original web search methods
-
-### Key Services Added
-- **RiskAnalyzer** (`src/utils/risk-analyzer.ts`) - AI-powered risk assessment
-- **FuturesMapper** (`src/utils/futures-mapper.ts`) - Time horizon to contract mapping
-- **Enhanced ForecastService** - Hybrid market consensus + risk adjustment methods
-- **Extended YahooFinanceService** - Futures curve data fetching capabilities
-
-### Configuration Updates
-- **FUTURES_CONFIG** - Contract symbols, expiration rules, caching strategies
-- **RISK_FACTOR_CONFIG** - Risk categories, impact ranges, time scaling factors
-- **FORECASTING_CONFIG** - Method selection, cost targets, performance metrics
-
-### Cost Optimization Achieved
-- **Traditional Method**: 8 OpenAI calls (4 forecasts + 4 risk analyses) = ~$0.20 per forecast
-- **New Hybrid Method**: 2 calls (1 futures fetch + 1 comprehensive risk analysis) = ~$0.05 per forecast
-- **Cost Reduction**: 75% savings achieved as targeted
+### Futures Contract Processing
+- **Contract Month Mapping**: Standard CME/NYMEX contract codes (F=Jan, G=Feb, etc.)
+- **Expiration Handling**: Business day rules for contract rollovers
+- **Curve Construction**: Interpolation and extrapolation for missing maturities
+- **Arbitrage Detection**: Validation of price relationships across the curve

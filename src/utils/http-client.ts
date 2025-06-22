@@ -24,7 +24,7 @@ import {
   shouldRetryError,
   calculateRetryDelay,
   generateCorrelationId
-} from './error-handler';
+} from './error-utils';
 
 /**
  * HTTP Client Error Types
@@ -207,7 +207,7 @@ class RateLimiter {
       category: ErrorCategory.RATE_LIMIT,
       severity: ErrorSeverity.MEDIUM,
       retryable: true,
-      recoveryStrategy: RecoveryStrategy.EXPONENTIAL_BACKOFF,
+      strategy: RecoveryStrategy.EXPONENTIAL_BACKOFF,
       statusCode: 429,
       context: errorContext,
       suggestedActions: [
@@ -223,7 +223,7 @@ class RateLimiter {
       category: rateLimitError.category,
       severity: rateLimitError.severity,
       retryable: rateLimitError.retryable,
-      recoveryStrategy: rateLimitError.recoveryStrategy,
+      strategy: rateLimitError.strategy,
       ...(rateLimitError.statusCode !== undefined && { statusCode: rateLimitError.statusCode }),
       context: rateLimitError.context,
       suggestedActions: rateLimitError.suggestedActions
@@ -691,7 +691,7 @@ export class YahooFinanceHttpClient {
           category: ErrorCategory.DATA_VALIDATION,
           severity: ErrorSeverity.MEDIUM,
           retryable: false,
-          recoveryStrategy: RecoveryStrategy.ALERT,
+          strategy: RecoveryStrategy.ALERT,
           context,
           suggestedActions: [
             'Provide a valid symbol string',
@@ -743,7 +743,7 @@ export class YahooFinanceHttpClient {
           category: ErrorCategory.DATA_VALIDATION,
           severity: ErrorSeverity.MEDIUM,
           retryable: false,
-          recoveryStrategy: RecoveryStrategy.ALERT,
+          strategy: RecoveryStrategy.ALERT,
           context,
           suggestedActions: [
             'Provide a valid symbol string',
@@ -783,7 +783,7 @@ export class YahooFinanceHttpClient {
           category: ErrorCategory.DATA_VALIDATION,
           severity: ErrorSeverity.LOW,
           retryable: false,
-          recoveryStrategy: RecoveryStrategy.ALERT,
+          strategy: RecoveryStrategy.ALERT,
           context,
           suggestedActions: [
             'Provide a non-empty search query',
@@ -817,7 +817,7 @@ export class YahooFinanceHttpClient {
         category: ErrorCategory.DATA_VALIDATION,
         severity: ErrorSeverity.HIGH,
         retryable: false,
-        recoveryStrategy: RecoveryStrategy.ALERT,
+        strategy: RecoveryStrategy.ALERT,
         context,
         suggestedActions: [
           'Check Yahoo Finance API status',
@@ -833,7 +833,7 @@ export class YahooFinanceHttpClient {
         category: ErrorCategory.API_ERROR,
         severity: ErrorSeverity.HIGH,
         retryable: false,
-        recoveryStrategy: RecoveryStrategy.ALERT,
+        strategy: RecoveryStrategy.ALERT,
         context,
         suggestedActions: [
           'Check symbol validity',
@@ -849,7 +849,7 @@ export class YahooFinanceHttpClient {
         category: ErrorCategory.DATA_VALIDATION,
         severity: ErrorSeverity.MEDIUM,
         retryable: true,
-        recoveryStrategy: RecoveryStrategy.RETRY,
+        strategy: RecoveryStrategy.RETRY,
         context,
         suggestedActions: [
           'Check if symbol exists',
