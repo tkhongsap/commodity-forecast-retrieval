@@ -115,7 +115,7 @@ Source: Yahoo Finance`,
         const searchResult = await this.webSearchService.search(query, {
           maxRetries: 3,
           timeout: 25000,
-          model: "gpt-4o-search-preview"
+          model: "gpt-4.1"
         });
         
         if (searchResult.success) {

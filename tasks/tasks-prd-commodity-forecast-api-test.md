@@ -28,7 +28,7 @@
 
 - [x] 2.0 OpenAI API Integration with Web Search Functionality
   - [x] 2.1 Set up OpenAI client initialization with environment variable loading
-  - [x] 2.2 Implement basic web search function using chat.completions.create with gpt-4o-search-preview model
+  - [x] 2.2 Implement basic web search function using chat.completions.create with gpt-4.1 model
   - [x] 2.3 Create reusable function for making web search queries with proper error handling
   - [x] 2.4 Test API connectivity and web search functionality with simple query
 

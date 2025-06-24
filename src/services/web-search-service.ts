@@ -62,7 +62,7 @@ export class WebSearchService {
     const { 
       maxRetries = 3, 
       timeout = 30000, 
-      model = "gpt-4o-search-preview" 
+      model = "gpt-4.1" 
     } = options;
     
     let lastError: Error;
@@ -76,22 +76,18 @@ export class WebSearchService {
           setTimeout(() => reject(new Error(`Request timeout after ${timeout}ms`)), timeout);
         });
         
-        // Create the API call promise
-        const apiCallPromise = this.client.chat.completions.create({
+        // Create the API call promise using Responses API
+        const apiCallPromise = this.client.responses.create({
           model,
-          web_search_options: {},
-          messages: [
-            {
-              role: "user",
-              content: query,
-            }
-          ],
+          tools: [{ type: "web_search_preview" }],
+          tool_choice: { type: "web_search_preview" }, // Force web search for consistent results
+          input: query,
         });
         
         // Race between API call and timeout
-        const completion = await Promise.race([apiCallPromise, timeoutPromise]);
+        const response = await Promise.race([apiCallPromise, timeoutPromise]);
         
-        const result = completion.choices[0]?.message?.content;
+        const result = response.output_text;
         
         if (!result) {
           throw new Error('No response content received from OpenAI web search');

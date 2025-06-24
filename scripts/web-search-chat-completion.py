@@ -7,7 +7,7 @@ client = OpenAI()
 
 
 completion = client.chat.completions.create(
-    model="gpt-4o-search-preview",
+    model="gpt-4.1",
     web_search_options={},
     messages=[
         {
