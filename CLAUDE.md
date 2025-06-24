@@ -114,7 +114,7 @@ Requires `.env` file with:
 ```
 OPENAI_API_KEY=your_openai_api_key_here
 ```
-**Critical**: API key must have access to `gpt-4o-search-preview` model
+**Critical**: API key must have access to `gpt-4.1` model
 
 ## Market Consensus + Risk Forecasting System
 
@@ -182,7 +182,7 @@ If you encounter `TS2532: Object is possibly 'undefined'`:
 
 #### API Connection Issues  
 1. **Check Environment**: Verify `.env` file contains valid `OPENAI_API_KEY`
-2. **Model Access**: Ensure API key has access to `gpt-4o-search-preview`
+2. **Model Access**: Ensure API key has access to `gpt-4.1`
 3. **Rate Limits**: System includes automatic retry with exponential backoff
 4. **Fallback**: Web search falls back to traditional forecasting on Yahoo Finance failure
 

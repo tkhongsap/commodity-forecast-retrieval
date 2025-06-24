@@ -86,7 +86,7 @@ Please cite reliable sources such as EIA, IEA, major financial institutions, ene
       const searchResult = await this.webSearchService.search(query, {
         maxRetries: 3,
         timeout: 30000,
-        model: "gpt-4o-search-preview"
+        model: "gpt-4.1"
       });
       
       if (searchResult.success) {
