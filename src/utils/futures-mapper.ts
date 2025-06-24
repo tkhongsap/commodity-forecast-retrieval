@@ -134,10 +134,15 @@ export class FuturesMapper {
     }
     
     const [, baseSymbol, monthCode, yearDigits] = match;
-    const month = MONTH_CODE_TO_NAME[monthCode as keyof typeof MONTH_CODE_TO_NAME];
-    const year = 2000 + parseInt(yearDigits, 10);
+    const month = MONTH_CODE_TO_NAME[monthCode as keyof typeof MONTH_CODE_TO_NAME] || 'Unknown';
+    const year = 2000 + parseInt(yearDigits || '0', 10);
     
-    return { baseSymbol, monthCode, month, year };
+    return { 
+      baseSymbol: baseSymbol || '', 
+      monthCode: monthCode || '', 
+      month, 
+      year 
+    };
   }
 
   /**

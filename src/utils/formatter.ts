@@ -65,7 +65,7 @@ export function extractKeyFactor(forecast: ForecastData): string {
     }
     
     // Generate concise 15-20 character label
-    return createConciseLabel(bestFactor || factors[0], isPositive);
+    return createConciseLabel(bestFactor || factors[0] || '', isPositive);
     
   } catch (error) {
     console.error('Error extracting key factor:', error);

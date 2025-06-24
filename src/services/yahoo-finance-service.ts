@@ -223,7 +223,8 @@ export class YahooFinanceService {
       }
 
       // Validate and parse response
-      const validationResult = this.validateResponse(chartResponse.data);
+      const yahooData = chartResponse.data as YahooFinanceResponse;
+      const validationResult = this.validateResponse(yahooData);
       if (!validationResult.isValid) {
         throw new YahooFinanceServiceException(
           YahooFinanceServiceError.VALIDATION_FAILED,
@@ -233,7 +234,7 @@ export class YahooFinanceService {
       }
 
       // Extract quote data
-      const chartResult = chartResponse.data.chart.result[0];
+      const chartResult = yahooData.chart.result[0];
       if (!chartResult) {
         throw new YahooFinanceServiceException(
           YahooFinanceServiceError.NO_DATA_AVAILABLE,
@@ -323,15 +324,16 @@ export class YahooFinanceService {
       }
 
       // Validate response
+      const yahooData = chartResponse.data as YahooFinanceResponse;
       if (validateData) {
-        const validationResult = this.validateResponse(chartResponse.data);
+        const validationResult = this.validateResponse(yahooData);
         if (!validationResult.isValid) {
           this.logger.warn(`[YahooFinanceService] Data validation warnings for ${symbol}:`, validationResult.warnings);
         }
       }
 
       // Parse historical data
-      const chartResult = chartResponse.data.chart.result[0];
+      const chartResult = yahooData.chart.result[0];
       if (!chartResult) {
         throw new YahooFinanceServiceException(
           YahooFinanceServiceError.NO_DATA_AVAILABLE,
